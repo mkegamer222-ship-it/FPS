@@ -1,0 +1,12 @@
+{
+  "name": "protocolo-fps",
+  "version": "1.0.0",
+  "description": "PROTOCOLO — FPS tático estilo Valorant, cooperativo, multiplayer P2P (WebRTC). Sem dependências.",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
