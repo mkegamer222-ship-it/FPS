@@ -11,6 +11,7 @@ const NET={
   myId:null,myName:'',roomCode:'',
   peer:null,conns:[],hostConn:null,lobby:[],seq:1,
   evQueue:[],snaps:[],lastSnap:null,st:'c',lastCd:-1,lastRnd:0,snapNow:false,visSnap:false,
+  myTeam:0,
   PE:null,sendAcc:0,interpBots:[],interpPlayers:[],
   leftIntentionally:false,
 
@@ -35,6 +36,9 @@ const NET={
   renderLobby(){
     const box=$('lobbyList');
     box.innerHTML='';
+    if(this.lobby.length>=2&&!this.started){
+      this.lobbyMsg('PvP · EQUIPES ALTERNADAS: '+this.lobby.map((p,i)=>(i%2===0?'V':'A')).join(' · '));
+    }
     this.lobby.forEach((p,i)=>{
       const d=document.createElement('div');
       d.className='lobbyP';
@@ -163,17 +167,21 @@ const NET={
     if(this.started)return;
     this.started=true;this.everStarted=true;
     requestGameFS();
-    for(const c of this.conns)c.conn.send({t:'start'});
+    // equipes alternadas: 0 = vermelha (host), 1 = azul
+    const teams=this.lobby.map((l,i)=>[l.id,i%2]);
+    for(const c of this.conns)c.conn.send({t:'start',teams});
     cleanupVis();
     SIM.players.length=0;
-    this.lobby.forEach(l=>{
+    this.lobby.forEach((l,i)=>{
       const e=makeEnt(l.id,l.name);
+      e.team=i%2;
       if(l.id==='p0')e.isLocal=true;
       SIM.players.push(e);
     });
-    SIM.active=true;SIM.round=0;
+    this.myTeam=0;
+    SIM.active=true;SIM.round=0;SIM.score=[0,0];
     G.mode='host';G.paused=false;
-    modeTag.textContent='SALA '+this.roomCode;
+    $('timeTag').classList.remove('hidden');
     $('lobby').classList.add('hidden');
     hudEl.classList.remove('hidden');
     lockPointer();
@@ -186,10 +194,11 @@ const NET={
     const pr=n=>+n.toFixed(2);
     const rows=SIM.players.map(p=>[p.id,pr(p.x),pr(p.y),pr(p.z),pr(p.yaw),pr(p.pitch),
       Math.round(p.hp),p.mags[p.weapon],p.reloading?1:0,p.dead?1:0,p.weapon,
-      p.input.ads?1:0,p.kills,p.smokeCharges,p.reserves[p.weapon]]);
+      p.input.ads?1:0,p.kills,p.smokeCharges,p.reserves[p.weapon],p.team]);
     const brows=SIM.bots.map(b=>[b.id,pr(b.x),pr(b.z),pr(b.y),pr(b.rot),b.alive?1:0]);
     const msg={t:'s',st:SIM.state==='playing'?'p':(SIM.state==='countdown'?'c':'e'),
       cd:+SIM.cdT.toFixed(1),rnd:SIM.round,el:SIM.enemiesLeft,
+      al:[aliveCount(0),aliveCount(1)],sc:SIM.score,rt:Math.ceil(SIM.roundT),
       p:rows,b:brows,ev:this.evQueue};
     this.evQueue=[];
     for(const c of this.conns){
@@ -258,25 +267,28 @@ const NET={
         this.cleanup();
         break;
       case 'start':
-        this.startClientGame();
+        this.startClientGame(d.teams||[]);
         break;
       case 's':
         this.onSnapshot(d);
         break;
     }
   },
-  startClientGame(){
+  startClientGame(teams){
     this.started=true;this.everStarted=true;
     requestGameFS();
     cleanupVis();
     SIM.active=false;SIM.players.length=0;
     clearSmokes(SIM.smokes);
+    const t=(teams||[]).find(r=>r[0]===this.myId);
+    this.myTeam=t?t[1]:1;
     this.PE=makeEnt(this.myId,this.myName);
     this.PE.isLocal=true;
+    this.PE.team=this.myTeam;
     this.st='c';this.lastRnd=0;this.snaps.length=0;this.snapNow=true;this.visSnap=true;
     VIEW.yaw=0;VIEW.pitch=0;
     G.mode='client';G.paused=false;
-    modeTag.textContent='SALA '+this.roomCode;
+    $('timeTag').classList.remove('hidden');
     $('lobby').classList.add('hidden');
     hudEl.classList.remove('hidden');
     lockPointer();
@@ -296,14 +308,19 @@ const NET={
     for(const ev of d.ev)this.handleEvent(ev);
     const me=d.p.find(r=>r[0]===this.myId);
     if(me&&this.PE)this.correctSelf(me);
-    HUDSRC.round=d.rnd;HUDSRC.enemies=d.el;
+    HUDSRC.round=d.rnd;
+    HUDSRC.enemies=d.al?(this.myTeam===0?d.al[1]:d.al[0]):d.el;
+    HUDSRC.time=d.rt||0;
+    if(d.sc)modeTag.textContent='SALA '+this.roomCode+' · '+d.sc[0]+' × '+d.sc[1];
   },
   correctSelf(row){
     const PE=this.PE;
     const ax=row[1],ay=row[2],az=row[3];
-    const err=Math.hypot(ax-PE.x,az-PE.z)+Math.abs(ay-PE.y);
-    if(err>3||this.snapNow){PE.x=ax;PE.y=ay;PE.z=az;PE.vy=0;}
-    else{PE.x+=(ax-PE.x)*0.4;PE.y+=(ay-PE.y)*0.4;PE.z+=(az-PE.z)*0.4;}
+    const errH=Math.hypot(ax-PE.x,az-PE.z);
+    if(errH>2.5||this.snapNow){PE.x=ax;PE.z=az;PE.vy=0;}
+    else{PE.x+=(ax-PE.x)*0.55;PE.z+=(az-PE.z)*0.55;}
+    if(Math.abs(ay-PE.y)>1.2)PE.y=ay;
+    else PE.y+=(ay-PE.y)*0.55;
     PE.hp=row[6];
     if(row[10]!==PE.weapon){PE.weapon=row[10];}
     PE.mags[PE.weapon]=row[7];
@@ -457,6 +474,12 @@ const NET={
       const t=rayBox(ox,oy,oz,dx,dy,dz,bb);
       if(t>0&&t<bestT)bestT=t;
     }
+    for(const q of this.interpPlayers){
+      if(q.team===this.myTeam)continue;
+      const bb={minX:q.x-0.45,maxX:q.x+0.45,minY:0.1,maxY:1.94,minZ:q.z-0.32,maxZ:q.z+0.32};
+      const t=rayBox(ox,oy,oz,dx,dy,dz,bb);
+      if(t>0&&t<bestT)bestT=t;
+    }
     const hp=new THREE.Vector3(ox+dx*bestT,oy+dy*bestT,oz+dz*bestT);
     const mw=curMuzzle.getWorldPosition(new THREE.Vector3());
     tracer(mw,hp,0xffd28c);
@@ -485,9 +508,9 @@ const NET={
       if(id===this.myId)continue;
       const ra=a.d.p.find(r=>r[0]===id)||row;
       const x=lerp(ra[1],row[1]),y=lerp(ra[2],row[2]),z=lerp(ra[3],row[3]),yw=lerpA(ra[4],row[4]);
-      const v=ensureVisPlayer(id);
+      const v=ensureVisPlayer(id,row[15]||0);
       setVisTarget(v,x,y,z,yw,row[9]===0,this.visSnap);
-      this.interpPlayers.push({x,z});
+      this.interpPlayers.push({x,z,team:row[15]||0});
     }
     for(const[id,v]of VIS.players){
       if(!seen.has(id)){scene.remove(v.group);VIS.players.delete(id);}

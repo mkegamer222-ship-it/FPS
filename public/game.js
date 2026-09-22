@@ -217,7 +217,7 @@ const WEAPONS=[
 const SPEED=5.4,WALK=2.7,GRAV=20,JUMP=7.8,EYE=1.62,PR=0.45;
 function makeEnt(id,name){
   return{
-    id,name,isLocal:false,
+    id,name,isLocal:false,team:0,
     x:0,y:0,z:34,vy:0,yaw:0,pitch:0,grounded:true,speed:0,
     hp:100,dead:false,deathT:0,
     weapon:0,mags:[WEAPONS[0].mag,WEAPONS[1].mag],reserves:[WEAPONS[0].reserve,WEAPONS[1].reserve],
@@ -226,13 +226,13 @@ function makeEnt(id,name){
     input:{mx:0,mz:0,yaw:0,pitch:0,walk:false,fire:false,jump:false,reload:false,q:false,weapon:0,ads:false}
   };
 }
-function resetEntForRound(e,idx){
+function resetEntForRound(e,x,z,yaw){
   e.hp=100;e.dead=false;e.deathT=0;
   e.weapon=0;e.mags=[WEAPONS[0].mag,WEAPONS[1].mag];e.reserves=[WEAPONS[0].reserve,WEAPONS[1].reserve];
   e.reloading=false;e.reloadT=0;e.fireCd=0;e.fireSpread=0;
   e.smokeCharges=3;e.smokeCd=0;
-  e.x=(idx-(0))*2.2-((SIM.players.length-1)*2.2)/2;e.z=34;e.y=0;e.vy=0;
-  e.yaw=0;e.pitch=0;
+  e.x=x;e.z=z;e.y=0;e.vy=0;
+  e.yaw=yaw||0;e.pitch=0;
   e.input.fire=false;e.input.jump=false;e.input.reload=false;e.input.q=false;e.input.weapon=0;
 }
 function integrate(e,dt){
@@ -263,7 +263,7 @@ function integrate(e,dt){
 
 // ---------------- estado global ----------------
 const G={mode:'menu',paused:false}; // mode: menu|solo|host|client
-const SIM={active:false,players:[],bots:[],smokes:[],round:0,enemiesLeft:0,state:'idle',cdT:0,lastCd:0,endT:0,roundToken:0,ending:null};
+const SIM={active:false,players:[],bots:[],smokes:[],round:0,enemiesLeft:0,state:'idle',cdT:0,lastCd:0,endT:0,roundToken:0,ending:null,score:[0,0],roundT:0};
 
 // net hook (net.js substitui)
 function netEvent(ev){if(window.NET&&window.NET.pushEvent)window.NET.pushEvent(ev);}
@@ -319,6 +319,7 @@ function updateHUD(me){
   roundN.textContent=HUDSRC.round;
   enemN.textContent=HUDSRC.enemies;
   killN.textContent=HUDSRC.kills;
+  $('timeN').textContent=Math.max(0,Math.ceil(HUDSRC.time||0));
   smokeN.textContent='●'.repeat(me.smokeCharges)+'○'.repeat(3-me.smokeCharges);
   $('ws0').className='wslot'+(me.weapon===0?' on':'');
   $('ws1').className='wslot'+(me.weapon===1?' on':'');
@@ -577,18 +578,26 @@ function killBot(b,byEnt,head){
 }
 
 // ---------------- dano ----------------
-function damageEnt(p,d,srcName){
+function damageEnt(p,d,src,head){
   if(SIM.state!=='playing'||p.dead)return;
+  const srcEnt=(src&&typeof src==='object')?src:null;
+  const srcName=srcEnt?srcEnt.name:(src||'BOT');
   p.hp-=d;
   netEvent({e:'dmg',id:p.id,d});
   if(p.isLocal){dmgFlash();sfx.hurt();}
   if(p.hp<=0){
     p.hp=0;p.dead=true;p.deathT=0;
-    feedAll(srcName||'BOT',p.name,false);
+    if(srcEnt)srcEnt.kills++;
+    if(srcEnt&&srcEnt.isLocal)sfx.kill();
+    feedAll(srcName,p.name,!!head);
     if(p.isLocal)announce('VOCÊ CAIU','',1.4);
-    let allDead=true;
-    for(const q of SIM.players)if(!q.dead){allDead=false;break;}
-    if(allDead)roundLose();
+    if(PVP()){
+      checkTeamWipe();
+    }else{
+      let allDead=true;
+      for(const q of SIM.players)if(!q.dead){allDead=false;break;}
+      if(allDead)roundLose();
+    }
   }
 }
 
@@ -617,10 +626,10 @@ function hostFireWeapon(p){
   dx+=rx*s1;dz+=rz*s1;dy+=s2;
   const dl=Math.hypot(dx,dy,dz);dx/=dl;dy/=dl;dz/=dl;
   const ox=p.x,oy=p.y+EYE,oz=p.z;
-  let bestT=120,hitB=null,hitHead=false;
+  let bestT=120,hitB=null,hitP=null,hitHead=false;
   for(let i=0;i<solids.length;i++){
     const t=rayBox(ox,oy,oz,dx,dy,dz,solids[i]);
-    if(t>0&&t<bestT){bestT=t;hitB=null;}
+    if(t>0&&t<bestT){bestT=t;hitB=null;hitP=null;}
   }
   for(const b of SIM.bots){
     if(!b.alive)continue;
@@ -629,7 +638,17 @@ function hostFireWeapon(p){
     let t=-1,head=false;
     if(th>0&&(tb<0||th<=tb)){t=th;head=true;}
     else if(tb>0){t=tb;head=false;}
-    if(t>0&&t<bestT){bestT=t;hitB=b;hitHead=head;}
+    if(t>0&&t<bestT){bestT=t;hitB=b;hitP=null;hitHead=head;}
+  }
+  // PvP: acerta jogadores inimigos (sem fogo amigo)
+  for(const q of SIM.players){
+    if(q===p||q.dead||q.team===p.team)continue;
+    const th=rayBox(ox,oy,oz,dx,dy,dz,playerBox(q,true));
+    const tb=rayBox(ox,oy,oz,dx,dy,dz,playerBox(q,false));
+    let t=-1,head=false;
+    if(th>0&&(tb<0||th<=tb)){t=th;head=true;}
+    else if(tb>0){t=tb;head=false;}
+    if(t>0&&t<bestT){bestT=t;hitP=q;hitB=null;hitHead=head;}
   }
   const hx=ox+dx*bestT,hy=oy+dy*bestT,hz=oz+dz*bestT;
   netEvent({e:'shot',id:p.id,w:p.weapon,ox,oy,oz,hx,hy,hz});
@@ -640,9 +659,20 @@ function hostFireWeapon(p){
     netEvent({e:'hit',by:p.id,tgt:hitB.id,head:hitHead?1:0,kill:hitB.hp<=0?1:0,at:[hx,hy,hz]});
     if(p.isLocal){hitmarker(hitB.hp<=0,hitHead);if(hitHead)sfx.headshot();else sfx.hit();}
     if(hitB.hp<=0)killBot(hitB,p,hitHead);
+  }else if(hitP){
+    // headshot em jogador = dano letal (estilo Vandal 1-tap)
+    const dmg=hitHead?w.head*2:w.dmg;
+    const dead=hitP.hp-dmg<=0;
+    netEvent({e:'hit',by:p.id,tgt:hitP.id,head:hitHead?1:0,kill:dead?1:0,at:[hx,hy,hz]});
+    if(p.isLocal){hitmarker(dead,hitHead);if(hitHead)sfx.headshot();else sfx.hit();}
+    damageEnt(hitP,dmg,p,hitHead);
   }else if(bestT<120){
     netEvent({e:'wall',id:p.id,at:[hx,hy,hz]});
   }
+}
+function playerBox(q,head){
+  if(head)return{minX:q.x-0.22,maxX:q.x+0.22,minY:q.y+1.5,maxY:q.y+1.94,minZ:q.z-0.22,maxZ:q.z+0.22};
+  return{minX:q.x-0.45,maxX:q.x+0.45,minY:q.y+0.1,maxY:q.y+1.5,minZ:q.z-0.32,maxZ:q.z+0.32};
 }
 function stepWeapons(p,dt){
   const w=WEAPONS[p.weapon];
@@ -696,17 +726,56 @@ function removeBarrier(){
   if(barrierSolid){const i=solids.indexOf(barrierSolid);if(i>=0)solids.splice(i,1);barrierSolid=null;}
   if(barrierMesh){scene.remove(barrierMesh);barrierMesh=null;}
 }
+const PVP=()=>G.mode==='host'&&SIM.players.length>=2;
 function startRoundHost(){
   SIM.roundToken++;
   SIM.round++;
-  SIM.players.forEach((p,i)=>resetEntForRound(p,i));
-  clearBots();
-  SIM.smokes.length=0;
-  const botN=Math.min(2+SIM.round+(SIM.players.length-1),9);
-  spawnBots(botN);
-  buildBarrier();
-  SIM.state='countdown';SIM.cdT=3.4;SIM.lastCd=-1;
-  annAll('ROUND '+SIM.round,'ELIMINEM TODOS OS INIMIGOS',1.8);
+  clearSmokes(SIM.smokes);
+  if(PVP()){
+    // ------- PvP: equipe vermelha (sul) vs azul (norte), sem bots/barreira -------
+    SIM.bots.length=0;SIM.enemiesLeft=0;
+    const tA=SIM.players.filter(p=>p.team===0);
+    const tB=SIM.players.filter(p=>p.team===1);
+    tA.forEach((p,i)=>resetEntForRound(p,(i-(tA.length-1)/2)*2.2,33,0));
+    tB.forEach((p,i)=>resetEntForRound(p,(i-(tB.length-1)/2)*2.2,-33,Math.PI));
+    removeBarrier();
+    SIM.state='countdown';SIM.cdT=3.4;SIM.lastCd=-1;SIM.roundT=90;
+    annAll('ROUND '+SIM.round,'VERMELHO '+SIM.score[0]+' × '+SIM.score[1]+' AZUL · ELIMINE A EQUIPE',2);
+  }else{
+    // ------- solo / sala sem oponente: cooperativo contra bots -------
+    SIM.players.forEach((p,i)=>resetEntForRound(p,(i-(SIM.players.length-1))*1.1,34,0));
+    clearBots();
+    const botN=Math.min(2+SIM.round+(SIM.players.length-1),9);
+    spawnBots(botN);
+    buildBarrier();
+    SIM.state='countdown';SIM.cdT=3.4;SIM.lastCd=-1;SIM.roundT=0;
+    annAll('ROUND '+SIM.round,'ELIMINEM TODOS OS INIMIGOS',1.8);
+  }
+}
+function aliveCount(t){
+  let n=0;
+  for(const p of SIM.players)if(p.team===t&&!p.dead)n++;
+  return n;
+}
+function checkTeamWipe(){
+  if(SIM.state!=='playing'||!PVP())return;
+  const a=aliveCount(0),b=aliveCount(1);
+  if(a>0&&b>0)return;
+  pvpEnd(a>0?0:(b>0?1:-1));
+}
+function timeUp(){
+  const a=aliveCount(0),b=aliveCount(1);
+  pvpEnd(a===b?-1:(a>b?0:1));
+}
+function pvpEnd(w){
+  if(SIM.state!=='playing')return;
+  SIM.state='roundend';SIM.endT=3;
+  if(w===-1){annAll('EMPATE','NINGUÉM SOBROU VIVO',2);sfx.lose();}
+  else{
+    SIM.score[w]++;
+    annAll('EQUIPE '+(w===0?'VERMELHA':'AZUL')+' VENCEU','PLACAR '+SIM.score[0]+' × '+SIM.score[1],2.2);
+    sfx.win();
+  }
 }
 function clearBots(){SIM.bots.length=0;}
 function roundWin(){
@@ -733,6 +802,11 @@ function hostStep(dt){
       annAll('GO GO GO!','',0.8);
       sfx.go();
     }
+  }else if(SIM.state==='playing'){
+    if(PVP()&&SIM.roundT>0){
+      SIM.roundT-=dt;
+      if(SIM.roundT<=0)timeUp();
+    }
   }else if(SIM.state==='roundend'){
     SIM.endT-=dt;
     if(SIM.endT<=0)startRoundHost();
@@ -753,10 +827,11 @@ function hostStep(dt){
 
 // ---------------- camada visual (meshes suavizados) ----------------
 const VIS={players:new Map(),bots:new Map()};
-function ensureVisPlayer(id){
+function ensureVisPlayer(id,team){
   let v=VIS.players.get(id);
+  if(v&&v.team!==team){scene.remove(v.group);VIS.players.delete(id);v=null;}
   if(!v){
-    v={group:makeBotMesh(0x46b0ff),x:0,y:-3,z:0,yaw:0,tx:0,ty:0,tz:0,tyaw:0,init:false,alive:true,deadT:0};
+    v={group:makeBotMesh(team===1?0x46b0ff:0xff4655),team,x:0,y:-3,z:0,yaw:0,tx:0,ty:0,tz:0,tyaw:0,init:false,alive:true,deadT:0};
     scene.add(v.group);
     VIS.players.set(id,v);
   }
@@ -803,7 +878,7 @@ function syncSIMtoVIS(){
   for(const p of SIM.players){
     if(p.isLocal)continue;
     ids.add(p.id);
-    const v=ensureVisPlayer(p.id);
+    const v=ensureVisPlayer(p.id,p.team);
     setVisTarget(v,p.x,p.y,p.z,p.yaw,!p.dead,false);
     v.group.visible=true;
   }
@@ -1036,8 +1111,8 @@ function drawRadar(me,botsSrc,playersSrc){
     if(!b.alive)continue;
     g.beginPath();g.arc(S/2+b.x*k,S/2+b.z*k,2.6,0,7);g.fill();
   }
-  g.fillStyle='#46b0ff';
   for(const p of playersSrc){
+    g.fillStyle=p.enemy?'#ff4655':'#46b0ff';
     g.beginPath();g.arc(S/2+p.x*k,S/2+p.z*k,2.4,0,7);g.fill();
   }
   g.save();
@@ -1105,7 +1180,8 @@ function startSolo(){
   const me=makeEnt('p0',localName());
   me.isLocal=true;
   SIM.players.push(me);
-  SIM.active=true;SIM.round=0;
+  SIM.active=true;SIM.round=0;SIM.score=[0,0];
+  $('timeTag').classList.add('hidden');
   G.mode='solo';G.paused=false;
   modeTag.textContent='SOLO';
   menuEl.classList.add('hidden');hudEl.classList.remove('hidden');
@@ -1149,9 +1225,14 @@ function loop(now){
   }else if(!G.paused){
     if(G.mode==='solo'||G.mode==='host'){
       syncSIMtoVIS();
-      HUDSRC.round=SIM.round;HUDSRC.enemies=SIM.enemiesLeft;
       const me=getMe();
+      HUDSRC.round=SIM.round;
+      HUDSRC.enemies=(G.mode==='host'&&PVP()&&me)?aliveCount(me.team===0?1:0):SIM.enemiesLeft;
+      HUDSRC.time=SIM.roundT;
       HUDSRC.kills=me?me.kills:0;HUDSRC.smoke=me?me.smokeCharges:0;
+      if(G.mode==='host'&&PVP()&&window.NET){
+        modeTag.textContent='SALA '+NET.roomCode+' · '+SIM.score[0]+' × '+SIM.score[1];
+      }
     }else if(G.mode==='client'&&window.NET){
       NET.frame(dt);
     }
@@ -1162,8 +1243,13 @@ function loop(now){
     const me=getMe();
     if(me){
       let botsR=[],playersR=[];
-      if(G.mode==='client'&&window.NET){botsR=NET.radarBots();playersR=NET.radarPlayers();}
-      else{botsR=SIM.bots;playersR=SIM.players.filter(p=>!p.isLocal&&!p.dead);}
+      if(G.mode==='client'&&window.NET){
+        botsR=NET.radarBots();
+        playersR=NET.radarPlayers().map(p=>({x:p.x,z:p.z,enemy:p.team!==NET.myTeam}));
+      }else{
+        botsR=SIM.bots;
+        playersR=SIM.players.filter(p=>!p.isLocal&&!p.dead).map(p=>({x:p.x,z:p.z,enemy:p.team!==me.team}));
+      }
       drawRadar(me,botsR,playersR);
     }
   }
