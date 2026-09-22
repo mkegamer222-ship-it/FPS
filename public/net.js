@@ -286,7 +286,9 @@ const NET={
     this.PE.isLocal=true;
     this.PE.team=this.myTeam;
     this.st='c';this.lastRnd=0;this.snaps.length=0;this.snapNow=true;this.visSnap=true;
-    VIEW.yaw=0;VIEW.pitch=0;
+    this.lastSnapT=performance.now();
+    VIEW.yaw=this.myTeam===1?Math.PI:0;
+    VIEW.pitch=0;
     G.mode='client';G.paused=false;
     $('timeTag').classList.remove('hidden');
     $('lobby').classList.add('hidden');
@@ -308,6 +310,7 @@ const NET={
     for(const ev of d.ev)this.handleEvent(ev);
     const me=d.p.find(r=>r[0]===this.myId);
     if(me&&this.PE)this.correctSelf(me);
+    this.lastSnapT=performance.now();
     HUDSRC.round=d.rnd;
     HUDSRC.enemies=d.al?(this.myTeam===0?d.al[1]:d.al[0]):d.el;
     HUDSRC.time=d.rt||0;
@@ -380,6 +383,11 @@ const NET={
   frame(dt){
     const PE=this.PE;
     if(!PE)return;
+    // watchdog: se o anfitrião parar de mandar dados, avisa em vez de congelar calado
+    if(this.started&&this.lastSnapT&&performance.now()-this.lastSnapT>5000){
+      this.netLost('O anfitrião parou de responder (aba fechada/dormindo ou conexão caiu).');
+      return;
+    }
     if(PE.dead)PE.deathT+=dt;
     const i=PE.input;
     i.mx=INPUT.mx;i.mz=INPUT.mz;

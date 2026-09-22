@@ -931,19 +931,38 @@ function lookDelta(dx,dy){
   VIEW.yaw-=dx*0.0021*s;
   VIEW.pitch=clamp(VIEW.pitch-dy*0.0021*s*(SET.invert?-1:1),-1.45,1.45);
 }
+let mouseDragLook=false;
 document.addEventListener('mousemove',e=>{
-  if(document.pointerLockElement!==canvas)return;
   if(!inGame())return;
-  lookDelta(e.movementX,e.movementY);
+  if(document.pointerLockElement===canvas){
+    lookDelta(e.movementX,e.movementY);
+  }else if(mouseDragLook&&!isTouch){
+    // fallback: arrastar com o botão segurado quando o lock não está disponível
+    lookDelta(e.movementX,e.movementY);
+  }
 });
 document.addEventListener('mousedown',e=>{
-  if(document.pointerLockElement!==canvas)return;
-  if(e.button===0)INPUT.fire=true;
-  if(e.button===2)INPUT.ads=true;
+  if(!inGame()||isTouch)return;
+  if(e.target&&e.target.closest&&e.target.closest('button,.overlay,input,select'))return;
+  if(document.pointerLockElement===canvas){
+    if(e.button===0)INPUT.fire=true;
+    if(e.button===2)INPUT.ads=true;
+  }else{
+    // 2º jogador no PC: o lock pode ter sido negado sem gesto — clicar trava o mouse e/ou ativa fallback
+    if(e.button===0){
+      lockPointer();
+      mouseDragLook=true;
+      INPUT.fire=true;
+    }
+    if(e.button===2)INPUT.ads=true;
+  }
 });
 document.addEventListener('mouseup',e=>{
-  if(e.button===0)INPUT.fire=false;
+  if(e.button===0){INPUT.fire=false;mouseDragLook=false;}
   if(e.button===2)INPUT.ads=false;
+});
+document.addEventListener('pointerlockchange',()=>{
+  if(document.pointerLockElement===canvas)mouseDragLook=false;
 });
 document.addEventListener('contextmenu',e=>e.preventDefault());
 function inGame(){return G.mode==='solo'||G.mode==='host'||G.mode==='client';}
