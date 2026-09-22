@@ -162,6 +162,7 @@ const NET={
   startGame(){
     if(this.started)return;
     this.started=true;this.everStarted=true;
+    requestGameFS();
     for(const c of this.conns)c.conn.send({t:'start'});
     cleanupVis();
     SIM.players.length=0;
@@ -266,6 +267,7 @@ const NET={
   },
   startClientGame(){
     this.started=true;this.everStarted=true;
+    requestGameFS();
     cleanupVis();
     SIM.active=false;SIM.players.length=0;
     clearSmokes(SIM.smokes);

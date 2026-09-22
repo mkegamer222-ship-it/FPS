@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="mobile-web-app-capable" content="yes"/>
 <title>PROTOCOLO // FPS tático P2P</title>
 <link rel="icon" href="data:,"/>
 <style>
@@ -10,12 +12,15 @@
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);font-family:'Segoe UI',Arial,sans-serif;color:var(--light);position:fixed;inset:0}
 #stage{position:fixed;inset:0;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
-canvas#c{width:100%;height:100%;display:block}
+#stage:fullscreen,#stage:-webkit-full-screen{width:100vw;height:100vh;background:var(--bg)}
+canvas#c{width:100%;height:100%;display:block;touch-action:none}
+#hud{touch-action:none}
+#touch{touch-action:none}
 .hidden{display:none!important}
 input,select,button{font-family:inherit}
 
 /* ===== HUD ===== */
-#hud{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+#hud{position:absolute;inset:0;pointer-events:none;overflow:hidden;touch-action:none}
 #radar{position:absolute;top:12px;left:12px;width:132px;height:132px;opacity:.92}
 #topbar{position:absolute;top:12px;left:50%;transform:translateX(-50%);display:flex;gap:8px}
 .tb{background:rgba(15,25,35,.78);border:1px solid rgba(236,232,225,.14);padding:6px 14px;font-size:11px;letter-spacing:2px;color:#aab6c2}
@@ -80,6 +85,7 @@ input,select,button{font-family:inherit}
 
 #hint{position:absolute;bottom:60px;left:50%;transform:translateX(-50%);font-size:11px;letter-spacing:2px;color:rgba(236,232,225,.45);white-space:nowrap}
 #pauseBtn{position:absolute;top:12px;left:156px;width:38px;height:38px;background:rgba(15,25,35,.7);border:1px solid rgba(236,232,225,.2);color:var(--light);font-size:13px;letter-spacing:2px;pointer-events:auto;cursor:pointer}
+#fsBtn{position:absolute;top:12px;left:202px;width:38px;height:38px;background:rgba(15,25,35,.7);border:1px solid rgba(236,232,225,.2);color:var(--light);font-size:15px;pointer-events:auto;cursor:pointer}
 
 /* ===== controles de toque ===== */
 #touch{display:none}
@@ -172,6 +178,7 @@ body.touch #hint,body.touch #wslots,body.touch #smokeWrap{display:none}
     <div id="dmgFlash"></div>
     <div id="hint">WASD MOVER · SHIFT ANDAR · ESPAÇO PULAR · R RECARREGAR · Q FUMAÇA · 1/2 ARMAS · BOTÃO DIR. MIRAR</div>
     <button id="pauseBtn">II</button>
+    <button id="fsBtn">⛶</button>
   </div>
 
   <div id="touch">
@@ -213,6 +220,7 @@ body.touch #hint,body.touch #wslots,body.touch #smokeWrap{display:none}
     <div id="menuMsg"></div>
     <div class="row" style="display:flex;gap:10px;margin-top:6px">
       <button class="tinbtn" id="btnSettings">⚙ CONFIGURAÇÕES</button>
+      <button class="tinbtn" id="btnFs">⛶ TELA CHEIA</button>
     </div>
     <div class="cols">
       <div class="col" id="colCtrl"><div class="h">CONTROLES</div></div>
@@ -256,6 +264,7 @@ body.touch #hint,body.touch #wslots,body.touch #smokeWrap{display:none}
     <div style="display:flex;flex-direction:column;gap:6px;margin-top:24px;align-items:center">
       <button class="bigbtn" id="resumeBtn">CONTINUAR</button>
       <button class="bigbtn alt hidden" id="btnLeavePause">SAIR DA SALA</button>
+      <button class="tinbtn" id="btnFsPause">⛶ TELA CHEIA</button>
     </div>
   </div>
 

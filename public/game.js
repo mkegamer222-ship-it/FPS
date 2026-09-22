@@ -880,63 +880,101 @@ document.addEventListener('pointerlockchange',()=>{
   }
 });
 
-// toque
+// entrada por toque/caneta (Pointer Events)
 const joyBase=$('joyBase'),joyKnob=$('joyKnob');
-let moveTouchId=null,lookTouchId=null,joyOX=0,joyOY=0,joyX=0,joyY=0,lookLX=0,lookLY=0;
+let movePid=null,lookPid=null,joyOX=0,joyOY=0,joyX=0,joyY=0,lookLX=0,lookLY=0;
 const stage=$('stage');
-stage.addEventListener('touchstart',e=>{
+function isUiTarget(el){return el&&el.closest&&el.closest('.overlay,button,input,select,.btn');}
+stage.addEventListener('pointerdown',e=>{
+  if(isUiTarget(e.target))return;      // menus/botões recebem clique normal
+  if(!inGame()||G.paused)return;       // não bloquear gestos fora do jogo
+  if(e.pointerType==='mouse')return;   // mouse usa pointer lock
+  if(e.pointerType==='touch')document.body.classList.add('touch');
   e.preventDefault();
-  for(const t of e.changedTouches){
-    if(t.target.closest&&t.target.closest('.btn'))continue;
-    if(moveTouchId===null&&t.clientX<window.innerWidth*0.45){
-      moveTouchId=t.identifier;joyOX=t.clientX;joyOY=t.clientY;
-      joyBase.style.display='block';
-      joyBase.style.left=(joyOX-56)+'px';joyBase.style.top=(joyOY-56)+'px';
-      joyKnob.style.transform='translate(0,0)';
-    }else if(lookTouchId===null){
-      lookTouchId=t.identifier;lookLX=t.clientX;lookLY=t.clientY;
+  try{stage.setPointerCapture(e.pointerId);}catch(err){}
+  if(movePid===null&&e.clientX<window.innerWidth*0.45){
+    movePid=e.pointerId;joyOX=e.clientX;joyOY=e.clientY;
+    joyBase.style.display='block';
+    joyBase.style.left=(joyOX-56)+'px';joyBase.style.top=(joyOY-56)+'px';
+    joyKnob.style.transform='translate(0,0)';
+  }else if(lookPid===null){
+    lookPid=e.pointerId;lookLX=e.clientX;lookLY=e.clientY;
+  }
+},{passive:false});
+stage.addEventListener('pointermove',e=>{
+  if(e.pointerType==='mouse')return;
+  if(e.pointerId===movePid){
+    joyX=clamp((e.clientX-joyOX)/48,-1,1);
+    joyY=clamp(-(e.clientY-joyOY)/48,-1,1);
+    joyKnob.style.transform='translate('+joyX*38+'px,'+(-joyY*38)+'px)';
+    recomputeKeys();
+  }else if(e.pointerId===lookPid){
+    const dx=e.clientX-lookLX,dy=e.clientY-lookLY;
+    lookLX=e.clientX;lookLY=e.clientY;
+    if(inGame()){
+      const s=SET.sens*(SET.invert?-1:1);
+      VIEW.yaw-=dx*0.0042*s;
+      VIEW.pitch=clamp(VIEW.pitch-dy*0.0042*s,-1.45,1.45);
     }
   }
 },{passive:false});
-stage.addEventListener('touchmove',e=>{
-  e.preventDefault();
-  for(const t of e.changedTouches){
-    if(t.identifier===moveTouchId){
-      joyX=clamp((t.clientX-joyOX)/48,-1,1);
-      joyY=clamp(-(t.clientY-joyOY)/48,-1,1);
-      joyKnob.style.transform='translate('+joyX*38+'px,'+(-joyY*38)+'px)';
-      recomputeKeys();
-    }else if(t.identifier===lookTouchId){
-      const dx=t.clientX-lookLX,dy=t.clientY-lookLY;
-      lookLX=t.clientX;lookLY=t.clientY;
-      if(inGame()){
-        const s=SET.sens*(SET.invert?-1:1);
-        VIEW.yaw-=dx*0.0042*s;
-        VIEW.pitch=clamp(VIEW.pitch-dy*0.0042*s,-1.45,1.45);
-      }
-    }
-  }
-},{passive:false});
-function touchEnd(e){
-  for(const t of e.changedTouches){
-    if(t.identifier===moveTouchId){moveTouchId=null;joyX=joyY=0;joyBase.style.display='none';recomputeKeys();}
-    if(t.identifier===lookTouchId)lookTouchId=null;
-  }
+function pointerEnd(e){
+  if(e.pointerId===movePid){movePid=null;joyX=joyY=0;joyBase.style.display='none';recomputeKeys();}
+  if(e.pointerId===lookPid)lookPid=null;
 }
-stage.addEventListener('touchend',touchEnd,{passive:false});
-stage.addEventListener('touchcancel',touchEnd,{passive:false});
+stage.addEventListener('pointerup',pointerEnd);
+stage.addEventListener('pointercancel',pointerEnd);
+// bloqueia gestos do navegador (pull-to-refresh, pinch, duplo toque) durante o jogo
+document.addEventListener('touchmove',e=>{if(inGame()&&!G.paused)e.preventDefault();},{passive:false});
+document.addEventListener('gesturestart',e=>e.preventDefault());
+document.addEventListener('dblclick',e=>e.preventDefault());
 function bindBtn(id,down,up){
   const el=$(id);
-  el.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();el.classList.add('on');if(down)down();},{passive:false});
-  const off=e=>{if(e){e.preventDefault();e.stopPropagation();}el.classList.remove('on');if(up)up();};
-  el.addEventListener('touchend',off,{passive:false});
-  el.addEventListener('touchcancel',off,{passive:false});
+  el.addEventListener('pointerdown',e=>{
+    e.preventDefault();e.stopPropagation();
+    try{el.setPointerCapture(e.pointerId);}catch(err){}
+    el.classList.add('on');if(down)down();
+  });
+  const off=e=>{
+    if(e){e.preventDefault();e.stopPropagation();}
+    if(!el.classList.contains('on'))return;
+    el.classList.remove('on');if(up)up();
+  };
+  el.addEventListener('pointerup',off);
+  el.addEventListener('pointercancel',off);
+  el.addEventListener('lostpointercapture',off);
 }
 bindBtn('btnFire',()=>INPUT.fire=true,()=>INPUT.fire=false);
 bindBtn('btnJump',()=>INPUT.jump=true);
 bindBtn('btnReload',()=>INPUT.reload=true);
 bindBtn('btnSmoke',()=>INPUT.q=true);
 bindBtn('btnWep',()=>INPUT.weapon=INPUT.weapon===0?1:0);
+
+// ---------------- tela cheia ----------------
+function requestGameFS(){
+  const el=document.documentElement;
+  const req=el.requestFullscreen||el.webkitRequestFullscreen;
+  if(!req)return;
+  try{
+    const p=req.call(el);
+    if(p&&p.then){
+      p.then(()=>{
+        try{if(screen.orientation&&screen.orientation.lock)screen.orientation.lock('landscape').catch(()=>{});}catch(e){}
+      }).catch(()=>{});
+    }
+  }catch(e){}
+}
+function toggleFS(){
+  const cur=document.fullscreenElement||document.webkitFullscreenElement;
+  if(cur){
+    const ex=document.exitFullscreen||document.webkitExitFullscreen;
+    if(ex)ex.call(document);
+    return;
+  }
+  requestGameFS();
+}
+document.addEventListener('fullscreenchange',resize);
+document.addEventListener('webkitfullscreenchange',resize);
 
 // ---------------- pausa ----------------
 function pauseGame(){
@@ -965,6 +1003,9 @@ $('pauseBtn').addEventListener('click',()=>{
   if(G.mode==='solo')pauseGame();
   else if(inGame())openMpOverlay();
 });
+$('fsBtn').addEventListener('click',toggleFS);
+$('btnFs').addEventListener('click',toggleFS);
+$('btnFsPause').addEventListener('click',toggleFS);
 $('resumeBtn').addEventListener('click',resumeGame);
 $('btnLeavePause').addEventListener('click',()=>{
   pauseEl.classList.add('hidden');
@@ -1058,6 +1099,7 @@ function updateCameraAndWeapon(dt){
 // ---------------- modo solo ----------------
 function startSolo(){
   initAudio();
+  requestGameFS();
   cleanupVis();
   SIM.players.length=0;
   const me=makeEnt('p0',localName());
