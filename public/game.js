@@ -521,25 +521,25 @@ function updateBot(b,dt){
   const canSee=SIM.state==='playing'&&botPickTarget(b);
   if(canSee){b.lastX=b.target.x;b.lastZ=b.target.z;b.engaged=true;}
   let tx,tz,speed=b.speed;
-  if(b.engaged){
+  if(b.engaged&&b.target&&canSee){
     const t=b.target;
-    const dx=t.x-b.x,dz=t.z-b.z,dist=Math.hypot(dx,dz);
-    if(!canSee){
-      tx=b.lastX;tz=b.lastZ;
-      if(Math.hypot(tx-b.x,tz-b.z)<2)b.engaged=false;
-    }else{
-      b.strafeT-=dt;
-      if(b.strafeT<=0){b.strafeDir=pick([-1,0,1,-1,1]);b.strafeT=rand(0.7,1.6);}
-      let mx=0,mz=0;
-      const fx=dx/dist,fz=dz/dist;
-      if(dist>26){mx+=fx;mz+=fz;}
-      else if(dist<7){mx-=fx;mz-=fz;}
-      mx+=-fz*b.strafeDir*0.8;mz+=fx*b.strafeDir*0.8;
-      tx=b.x+mx*10;tz=b.z+mz*10;
-      b.fireT-=dt;
-      if(b.fireT<=0){b.fireT=b.fireInterval*rand(0.8,1.3);botShootAt(b,t,dist);}
-      b.rot=Math.atan2(dx,dz);
-    }
+    const dx=t.x-b.x,dz=t.z-b.z,dist=Math.hypot(dx,dz)||0.001;
+    b.strafeT-=dt;
+    if(b.strafeT<=0){b.strafeDir=pick([-1,0,1,-1,1]);b.strafeT=rand(0.7,1.6);}
+    let mx=0,mz=0;
+    const fx=dx/dist,fz=dz/dist;
+    if(dist>26){mx+=fx;mz+=fz;}
+    else if(dist<7){mx-=fx;mz-=fz;}
+    mx+=-fz*b.strafeDir*0.8;mz+=fx*b.strafeDir*0.8;
+    tx=b.x+mx*10;tz=b.z+mz*10;
+    b.fireT-=dt;
+    if(b.fireT<=0){b.fireT=b.fireInterval*rand(0.8,1.3);botShootAt(b,t,dist);}
+    b.rot=Math.atan2(dx,dz);
+  }else if(b.engaged){
+    // perdeu o alvo de vista (ou ele morreu): vai até a última posição conhecida
+    tx=b.lastX;tz=b.lastZ;
+    if(Math.hypot(tx-b.x,tz-b.z)<2||!canSee&&b.target===null&&SIM.state!=='playing')b.engaged=false;
+    if(b.target===null)b.engaged=false;
   }else{
     if(!b.nav||Math.hypot(b.nav[0]-b.x,b.nav[1]-b.z)<2||b.idleT>6){b.nav=pick(NAV);b.idleT=0;}
     tx=b.nav[0];tz=b.nav[1];speed*=0.72;
@@ -615,13 +615,14 @@ function hostFireWeapon(p){
   if(p.mags[p.weapon]<=0){startReload(p);return;}
   p.mags[p.weapon]--;
   p.fireCd=w.rate;
-  p.fireSpread=Math.min(p.fireSpread+w.kick,3);
   if(p.isLocal)localShotFX(p.weapon);
   const cp=Math.cos(p.pitch);
   let dx=-Math.sin(p.yaw)*cp,dy=Math.sin(p.pitch),dz=-Math.cos(p.yaw)*cp;
   const mv=p.speed/SPEED;
+  // spread calculado ANTES do kick deste tiro: 1º tiro parado é preciso (estilo Valorant)
   const sp=(0.0016+p.fireSpread*0.004+mv*0.004)*(p.input.walk?0.4:1)*(p.input.ads?0.55:1);
   const s1=rand(-sp,sp),s2=rand(-sp,sp);
+  p.fireSpread=Math.min(p.fireSpread+w.kick,3);
   const rx=Math.cos(p.yaw),rz=-Math.sin(p.yaw);
   dx+=rx*s1;dz+=rz*s1;dy+=s2;
   const dl=Math.hypot(dx,dy,dz);dx/=dl;dy/=dl;dz/=dl;
@@ -1310,6 +1311,8 @@ function backToMenu(){
   hudEl.classList.add('hidden');
   pauseEl.classList.add('hidden');
   $('lobby').classList.add('hidden');
+  $('timeTag').classList.add('hidden');
+  $('pingTag').classList.add('hidden');
   menuEl.classList.remove('hidden');
 }
 window.backToMenu=backToMenu;

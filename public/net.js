@@ -11,7 +11,7 @@ const NET={
   myId:null,myName:'',roomCode:'',
   peer:null,conns:[],hostConn:null,lobby:[],seq:1,
   evQueue:[],snaps:[],lastSnap:null,st:'c',lastCd:-1,lastRnd:0,snapNow:false,visSnap:false,
-  myTeam:0,
+  myTeam:0,rtt:0,resyncAcc:0,hbInt:null,joinAttempts:0,
   PE:null,sendAcc:0,interpBots:[],interpPlayers:[],
   leftIntentionally:false,
 
@@ -72,8 +72,9 @@ const NET={
   },
   openPeer(id,isHost){
     const opt={config:{iceServers:[
-      {urls:'stun:stun.l.google.com:19302'},
-      {urls:'stun:stun1.l.google.com:19302'}
+      {urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302','stun:stun.cloudflare.com:3478']},
+      {urls:'turn:openrelay.metered.ca:80',username:'openrelayproject',credential:'openrelayproject'},
+      {urls:'turn:openrelay.metered.ca:443',username:'openrelayproject',credential:'openrelayproject'}
     ]}};
     this.peer=id?new Peer(id,opt):new Peer(opt);
     this.peer.on('open',()=>{
@@ -83,6 +84,19 @@ const NET={
     this.peer.on('error',err=>{
       const t=err&&err.type;
       if(t==='peer-unavailable'){
+        if(!isHost){
+          // a sala pode ainda estar registrando no sinalizador: tenta de novo
+          this.joinAttempts=(this.joinAttempts||0)+1;
+          if(this.joinAttempts<=6){
+            this.msg('Procurando a sala... ('+this.joinAttempts+'/6)',true);
+            setTimeout(()=>{
+              if(!this.started&&this.myId===null&&!this.leftIntentionally&&this.peer&&!this.peer.destroyed){
+                this.tryConnect(this.roomCode);
+              }
+            },1200);
+            return;
+          }
+        }
         this.msg('Sala não encontrada. Confira o código.',false);
         this.abortJoin();
       }else if(t==='unavailable-id'&&isHost){
@@ -119,12 +133,17 @@ const NET={
     });
     conn.on('data',d=>{
       if(!d||typeof d!=='object')return;
+      if(d.t==='ping'){
+        try{conn.send({t:'pong',ts:d.ts});}catch(e){}
+        return;
+      }
+      if(d.t==='resync'&&this.started){this.broadcast();return;}
       if(d.t==='i'&&this.started){
         const c=this.conns.find(c=>c.conn===conn);
-        if(c)this.applyInput(c.pid,d);
+        if(c){c.lastT=performance.now();this.applyInput(c.pid,d);}
       }
     });
-    conn.on('close',()=>{
+    const onClose=()=>{
       const c=this.conns.find(c=>c.conn===conn);
       this.conns=this.conns.filter(c=>c.conn!==conn);
       if(!c)return;
@@ -142,8 +161,9 @@ const NET={
         this.broadcastLobby();
         this.lobbyMsg(this.lobby.length+' AGENTE(S) NA SALA');
       }
-    });
-    conn.on('error',()=>{});
+    };
+    conn.on('close',onClose);
+    conn.on('error',onClose);
   },
   broadcastLobby(){
     for(const c of this.conns)c.conn.send({t:'lobby',lobby:this.lobby});
@@ -182,6 +202,7 @@ const NET={
     SIM.active=true;SIM.round=0;SIM.score=[0,0];
     G.mode='host';G.paused=false;
     $('timeTag').classList.remove('hidden');
+    $('pingTag').classList.remove('hidden');
     $('lobby').classList.add('hidden');
     hudEl.classList.remove('hidden');
     lockPointer();
@@ -191,6 +212,16 @@ const NET={
   // ---------- host: snapshot ----------
   broadcast(){
     if(!this.conns.length){this.evQueue.length=0;return;}
+    // zera input de cliente sumido (aba fechada/dormindo) para não virar "fantasma"
+    const now=performance.now();
+    for(const c of this.conns){
+      if(c.lastT&&now-c.lastT>3000){
+        const p=SIM.players.find(q=>q.id===c.pid);
+        if(p){
+          p.input.mx=0;p.input.mz=0;p.input.fire=false;p.input.walk=false;p.input.ads=false;
+        }
+      }
+    }
     const pr=n=>+n.toFixed(2);
     const rows=SIM.players.map(p=>[p.id,pr(p.x),pr(p.y),pr(p.z),pr(p.yaw),pr(p.pitch),
       Math.round(p.hp),p.mags[p.weapon],p.reloading?1:0,p.dead?1:0,p.weapon,
@@ -200,10 +231,13 @@ const NET={
       cd:+SIM.cdT.toFixed(1),rnd:SIM.round,el:SIM.enemiesLeft,
       al:[aliveCount(0),aliveCount(1)],sc:SIM.score,rt:Math.ceil(SIM.roundT),
       p:rows,b:brows,ev:this.evQueue};
-    this.evQueue=[];
+    let any=false;
     for(const c of this.conns){
-      try{c.conn.send(msg);}catch(e){}
+      const dc=c.conn.dataChannel;
+      if(dc&&dc.bufferedAmount>150000)continue; // canal congestionado: descarta p/ não criar espiral de latência
+      try{c.conn.send(msg);any=true;}catch(e){}
     }
+    if(any)this.evQueue=[];
   },
 
   // ---------- cliente: entrar em sala ----------
@@ -216,32 +250,46 @@ const NET={
     this.myName=localName();
     this.roomCode=code;
     this.leftIntentionally=false;
+    this.joinAttempts=0;
     this.msg('Conectando à sala '+code+'...',true);
     this.openPeer(null,false);
     const self=this;
+    // keepalive: mantém o binding do NAT vivo e mede RTT desde o lobby
+    this.hbInt=setInterval(()=>{
+      try{
+        if(self.hostConn&&self.hostConn.open)self.hostConn.send({t:'ping',ts:performance.now()});
+      }catch(e){}
+    },1000);
     this.peer.on('open',()=>{
-      self.hostConn=self.peer.connect('protocolo-fps-'+code.toLowerCase(),
-        {reliable:true,metadata:{name:self.myName}});
-      self.hostConn.on('open',()=>{self.msg('Conectado! Entrando no lobby...',true);});
-      self.hostConn.on('data',d=>self.hostMsg(d));
-      self.hostConn.on('close',()=>{
-        if(self.leftIntentionally)return;
-        if(self.everStarted){
-          self.netLost('A conexão com o anfitrião caiu.');
-        }else{
-          self.cleanup();
-          $('lobby').classList.add('hidden');
-          self.msg('A sala foi fechada ou a conexão falhou.',false);
-          backToMenu();
-        }
-      });
-      self.hostConn.on('error',()=>{});
+      self.tryConnect(code);
       setTimeout(()=>{
         if(!self.started&&self.myId===null){
           self.msg('Não houve resposta da sala. Tente novamente.',false);
           self.abortJoin();
         }
-      },9000);
+      },12000);
+    });
+  },
+  // tenta (re)conectar ao host — o registro da sala no sinalizador pode demorar
+  tryConnect(code){
+    const self=this;
+    this.hostConn=this.peer.connect('protocolo-fps-'+code.toLowerCase(),
+      {reliable:true,serialization:'json',metadata:{name:this.myName}});
+    this.hostConn.on('open',()=>{self.msg('Conectado! Entrando no lobby...',true);});
+    this.hostConn.on('data',d=>self.hostMsg(d));
+    this.hostConn.on('close',()=>{
+      if(self.leftIntentionally)return;
+      if(self.everStarted){
+        self.netLost('A conexão com o anfitrião caiu.');
+      }else{
+        self.cleanup();
+        $('lobby').classList.add('hidden');
+        self.msg('A sala foi fechada ou a conexão falhou.',false);
+        backToMenu();
+      }
+    });
+    this.hostConn.on('error',()=>{
+      if(!self.leftIntentionally)self.netLost('Erro na conexão P2P com o anfitrião.');
     });
   },
   abortJoin(){
@@ -269,6 +317,10 @@ const NET={
       case 'start':
         this.startClientGame(d.teams||[]);
         break;
+      case 'pong':
+        this.rtt=performance.now()-(d.ts||0);
+        $('pingN').textContent=Math.round(this.rtt)+'ms';
+        break;
       case 's':
         this.onSnapshot(d);
         break;
@@ -276,7 +328,6 @@ const NET={
   },
   startClientGame(teams){
     this.started=true;this.everStarted=true;
-    requestGameFS();
     cleanupVis();
     SIM.active=false;SIM.players.length=0;
     clearSmokes(SIM.smokes);
@@ -291,6 +342,7 @@ const NET={
     VIEW.pitch=0;
     G.mode='client';G.paused=false;
     $('timeTag').classList.remove('hidden');
+    $('pingTag').classList.remove('hidden');
     $('lobby').classList.add('hidden');
     hudEl.classList.remove('hidden');
     lockPointer();
@@ -388,6 +440,17 @@ const NET={
       this.netLost('O anfitrião parou de responder (aba fechada/dormindo ou conexão caiu).');
       return;
     }
+    // re-sincronização: se perdeu snapshots, pede um completo ao host
+    this.resyncAcc=(this.resyncAcc||0)+dt;
+    if(this.resyncAcc>1){
+      this.resyncAcc=0;
+      if(this.started&&this.lastSnapT){
+        const gap=performance.now()-this.lastSnapT;
+        if(gap>1500&&gap<5000&&this.hostConn&&this.hostConn.open){
+          try{this.hostConn.send({t:'resync'});}catch(e){}
+        }
+      }
+    }
     if(PE.dead)PE.deathT+=dt;
     const i=PE.input;
     i.mx=INPUT.mx;i.mz=INPUT.mz;
@@ -459,7 +522,6 @@ const NET={
     if(PE.mags[PE.weapon]<=0){this.startReloadLocal(PE);return;}
     PE.mags[PE.weapon]--;
     PE.fireCd=w.rate;
-    PE.fireSpread=Math.min(PE.fireSpread+w.kick,3);
     localShotFX(PE.weapon);
     // rastro apenas visual (o dano é decidido pelo host)
     const cp=Math.cos(PE.pitch);
@@ -467,6 +529,7 @@ const NET={
     const mv=PE.speed/SPEED;
     const sp=(0.0016+PE.fireSpread*0.004+mv*0.004)*(INPUT.walk?0.4:1)*(INPUT.ads?0.55:1);
     const s1=rand(-sp,sp),s2=rand(-sp,sp);
+    PE.fireSpread=Math.min(PE.fireSpread+w.kick,3);
     const rx=Math.cos(PE.yaw),rz=-Math.sin(PE.yaw);
     dx+=rx*s1;dz+=rz*s1;dy+=s2;
     const dl=Math.hypot(dx,dy,dz);dx/=dl;dy/=dl;dz/=dl;
@@ -558,6 +621,8 @@ const NET={
     try{for(const c of this.conns)c.conn.close();}catch(e){}
     try{if(this.hostConn)this.hostConn.close();}catch(e){}
     try{if(this.peer)this.peer.destroy();}catch(e){}
+    if(this.hbInt){clearInterval(this.hbInt);this.hbInt=null;}
+    this.joinAttempts=0;this.rtt=0;
     this.conns=[];this.hostConn=null;this.peer=null;
     this.started=false;this.everStarted=false;
     this.isHost=false;this.myId=null;this.lobby=[];this.seq=1;
@@ -595,3 +660,6 @@ $('roomCodeInput').addEventListener('keydown',e=>{
 $('roomCodeInput').addEventListener('input',e=>{
   e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'');
 });
+
+// expõe o NET para o game.js (const de script clássico não vira propriedade de window)
+window.NET=NET;
