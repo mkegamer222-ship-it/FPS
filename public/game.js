@@ -15,7 +15,7 @@ if(isTouch)document.body.classList.add('touch');
 const $=id=>document.getElementById(id);
 
 // ---------------- configurações ----------------
-const SET_DEF={sens:1,fov:75,vol:0.8,qual:'auto',res:1,fx:true,fps:false,invert:false};
+const SET_DEF={sens:1,fov:75,vol:0.8,qual:'auto',res:1,fx:true,fps:false,fpsCap:0,invert:false};
 let SET=Object.assign({},SET_DEF);
 try{
   const s=JSON.parse(localStorage.getItem('proto_set_v1'));
@@ -1239,7 +1239,7 @@ function trackPerf(dtRaw){
     fpsUiT+=dtRaw;
     if(fpsUiT>0.25){fpsUiT=0;$('fpsN').textContent=Math.round(Math.min(fpsEma,999));}
   }
-  if(SET.qual==='auto'&&inGame()&&!G.paused){
+  if(SET.qual==='auto'&&SET.fpsCap===0&&inGame()&&!G.paused){
     autoT+=dtRaw;
     if(autoT>2){
       autoT=0;
@@ -1275,8 +1275,18 @@ function localName(){
   const n=$('nameInput').value.trim().toUpperCase();
   return n||('AGENTE-'+randi(10,99));
 }
+let frameLast=performance.now();
 function loop(now){
   requestAnimationFrame(loop);
+  // limitador de FPS: pula quadros até completar o intervalo alvo
+  if(SET.fpsCap>0){
+    const iv=1000/SET.fpsCap;
+    const el=now-frameLast;
+    if(el<iv-1)return;
+    frameLast=now-(el%iv);
+  }else{
+    frameLast=now;
+  }
   const raw=(now-last)/1000;last=now;
   trackPerf(raw);
   let dt=raw;
@@ -1345,6 +1355,7 @@ function setUI(){
   $('setRes').value=String(SET.res);
   $('setFx').checked=SET.fx;
   $('setFps').checked=SET.fps;
+  $('setFpsCap').value=String(SET.fpsCap);
   $('setInvert').checked=SET.invert;
   $('fpsTag').classList.toggle('hidden',!SET.fps);
 }
@@ -1355,6 +1366,7 @@ $('setQual').addEventListener('change',e=>{SET.qual=e.target.value;autoScale=1;a
 $('setRes').addEventListener('change',e=>{SET.res=parseFloat(e.target.value);applyQuality();saveSet();});
 $('setFx').addEventListener('change',e=>{SET.fx=e.target.checked;saveSet();});
 $('setFps').addEventListener('change',e=>{SET.fps=e.target.checked;$('fpsTag').classList.toggle('hidden',!SET.fps);saveSet();});
+$('setFpsCap').addEventListener('change',e=>{SET.fpsCap=parseInt(e.target.value,10)||0;frameLast=performance.now();saveSet();});
 $('setInvert').addEventListener('change',e=>{SET.invert=e.target.checked;saveSet();});
 $('btnSetReset').addEventListener('click',()=>{SET=Object.assign({},SET_DEF);autoScale=1;if(master)master.gain.value=SET.vol;applyQuality();saveSet();setUI();});
 setUI();
