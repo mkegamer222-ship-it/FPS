@@ -15,19 +15,37 @@ if(isTouch)document.body.classList.add('touch');
 const $=id=>document.getElementById(id);
 
 // ---------------- configurações ----------------
-const SET_DEF={sens:1,fov:75,vol:0.8,qual:'high',invert:false};
+const SET_DEF={sens:1,fov:75,vol:0.8,qual:'auto',res:1,fx:true,fps:false,invert:false};
 let SET=Object.assign({},SET_DEF);
 try{
   const s=JSON.parse(localStorage.getItem('proto_set_v1'));
   if(s)SET=Object.assign(SET_DEF,s);
 }catch(e){}
 function saveSet(){try{localStorage.setItem('proto_set_v1',JSON.stringify(SET));}catch(e){}}
+// níveis de qualidade: sombras, tamanho do shadow map e teto de pixel ratio
+function qualBase(){
+  const q=SET.qual==='auto'?'high':SET.qual;
+  if(q==='high')return{sh:true,shSize:isTouch?1024:2048,cap:isTouch?1.5:2};
+  if(q==='med')return{sh:true,shSize:1024,cap:1.25};
+  return{sh:false,shSize:512,cap:1};
+}
+let autoScale=1; // modo AUTO reduz/aumenta a resolução interna conforme o FPS
+function computedPR(){
+  const base=Math.min(window.devicePixelRatio||1,qualBase().cap);
+  return clamp(base*SET.res*autoScale,0.5,Math.max(1,window.devicePixelRatio||1));
+}
 function applyQuality(){
-  const high=SET.qual==='high';
-  renderer.setPixelRatio(high?Math.min(window.devicePixelRatio||1,isTouch?1.5:2):1);
-  sun.castShadow=high;
-  renderer.shadowMap.enabled=high;
-  for(const m of mapGroup.children){m.castShadow=high;m.receiveShadow=true;}
+  const qb=qualBase();
+  renderer.setPixelRatio(computedPR());
+  if(renderer.shadowMap.enabled!==qb.sh){
+    renderer.shadowMap.enabled=qb.sh;
+    scene.traverse(o=>{if(o.material)o.material.needsUpdate=true;});
+  }
+  sun.castShadow=qb.sh;
+  sun.shadow.mapSize.set(qb.shSize,qb.shSize);
+  if(sun.shadow.map&&sun.shadow.map.dispose){sun.shadow.map.dispose();sun.shadow.map=null;}
+  for(const m of mapGroup.children){m.castShadow=qb.sh;m.receiveShadow=true;}
+  resize();
 }
 
 // ---------------- renderer / cena ----------------
@@ -370,6 +388,7 @@ function tracer(a,b,color){
   scene.add(m);tracers.push({m,life:0.07,max:0.07});
 }
 function sparksAt(p,color,n){
+  if(!SET.fx)return;
   n=n||5;
   for(let i=0;i<n;i++){
     const s=new THREE.Mesh(sparkGeo,new THREE.MeshBasicMaterial({color,transparent:true}));
@@ -1212,6 +1231,28 @@ function startSolo(){
 // ---------------- loop principal ----------------
 const SIM_DT=0.05;
 let simAcc=0,last=performance.now();
+let fpsEma=60,fpsUiT=0,autoT=0;
+function trackPerf(dtRaw){
+  if(dtRaw<=0)return;
+  fpsEma+=(1/dtRaw-fpsEma)*0.06;
+  if(SET.fps){
+    fpsUiT+=dtRaw;
+    if(fpsUiT>0.25){fpsUiT=0;$('fpsN').textContent=Math.round(Math.min(fpsEma,999));}
+  }
+  if(SET.qual==='auto'&&inGame()&&!G.paused){
+    autoT+=dtRaw;
+    if(autoT>2){
+      autoT=0;
+      if(fpsEma<42&&autoScale>0.6){
+        autoScale=Math.max(0.6,autoScale*0.85);
+        renderer.setPixelRatio(computedPR());resize();
+      }else if(fpsEma>57&&autoScale<1){
+        autoScale=Math.min(1,autoScale+0.15);
+        renderer.setPixelRatio(computedPR());resize();
+      }
+    }
+  }
+}
 setInterval(()=>{
   if(!SIM.active||G.paused)return;
   syncLocalInput();
@@ -1236,7 +1277,9 @@ function localName(){
 }
 function loop(now){
   requestAnimationFrame(loop);
-  let dt=(now-last)/1000;last=now;
+  const raw=(now-last)/1000;last=now;
+  trackPerf(raw);
+  let dt=raw;
   if(dt>0.05)dt=0.05;
   if(G.mode==='menu'){
     const a=now*0.00012;
@@ -1278,25 +1321,42 @@ function loop(now){
 requestAnimationFrame(loop);
 
 // ---------------- menu / configurações ----------------
-$('colCtrl').innerHTML=isTouch
+const CTRL_HTML=isTouch
   ?'<div class="h">CONTROLES · TOQUE</div><b>Lado esquerdo</b>: joystick de movimento<br><b>Lado direito</b>: arraste para mirar<br><b>ATIRAR</b>: fogo automático · <b>TROCAR</b>: troca de arma<br><b>▲</b> pular · <b>RECAR.</b> recarregar · <b>Q</b> fumaça'
   :'<div class="h">CONTROLES · PC</div><b>WASD</b> mover · <b>SHIFT</b> andar (mais preciso)<br><b>Mouse</b> mirar · <b>Clique esq.</b> atirar · <b>Clique dir.</b> zoom<br><b>ESPAÇO</b> pular · <b>R</b> recarregar · <b>Q</b> fumaça · <b>1/2</b> trocar arma';
+$('colCtrl').innerHTML=CTRL_HTML;
+$('helpCtrl').innerHTML=CTRL_HTML;
+let settingsFrom='menu';
 $('btnSolo').addEventListener('click',startSolo);
-$('btnSettings').addEventListener('click',()=>{menuEl.classList.add('hidden');$('settings').classList.remove('hidden');});
-$('btnSetBack').addEventListener('click',()=>{$('settings').classList.add('hidden');menuEl.classList.remove('hidden');});
+$('btnSettings').addEventListener('click',()=>{settingsFrom='menu';menuEl.classList.add('hidden');$('settings').classList.remove('hidden');});
+$('btnHelp').addEventListener('click',()=>{menuEl.classList.add('hidden');$('help').classList.remove('hidden');});
+$('btnHelpBack').addEventListener('click',()=>{$('help').classList.add('hidden');menuEl.classList.remove('hidden');});
+$('btnPauseSettings').addEventListener('click',()=>{settingsFrom='pause';pauseEl.classList.add('hidden');$('settings').classList.remove('hidden');});
+$('btnSetBack').addEventListener('click',()=>{
+  $('settings').classList.add('hidden');
+  if(settingsFrom==='pause'&&inGame())pauseEl.classList.remove('hidden');
+  else menuEl.classList.remove('hidden');
+});
 function setUI(){
   $('setSens').value=SET.sens;$('setSensV').textContent=SET.sens.toFixed(2);
   $('setFov').value=SET.fov;$('setFovV').textContent=SET.fov;
   $('setVol').value=SET.vol;$('setVolV').textContent=Math.round(SET.vol*100)+'%';
   $('setQual').value=SET.qual;
+  $('setRes').value=String(SET.res);
+  $('setFx').checked=SET.fx;
+  $('setFps').checked=SET.fps;
   $('setInvert').checked=SET.invert;
+  $('fpsTag').classList.toggle('hidden',!SET.fps);
 }
 $('setSens').addEventListener('input',e=>{SET.sens=parseFloat(e.target.value);$('setSensV').textContent=SET.sens.toFixed(2);saveSet();});
 $('setFov').addEventListener('input',e=>{SET.fov=parseInt(e.target.value,10);$('setFovV').textContent=SET.fov;saveSet();});
 $('setVol').addEventListener('input',e=>{SET.vol=parseFloat(e.target.value);$('setVolV').textContent=Math.round(SET.vol*100)+'%';if(master)master.gain.value=SET.vol;saveSet();});
-$('setQual').addEventListener('change',e=>{SET.qual=e.target.value;applyQuality();saveSet();});
+$('setQual').addEventListener('change',e=>{SET.qual=e.target.value;autoScale=1;applyQuality();saveSet();});
+$('setRes').addEventListener('change',e=>{SET.res=parseFloat(e.target.value);applyQuality();saveSet();});
+$('setFx').addEventListener('change',e=>{SET.fx=e.target.checked;saveSet();});
+$('setFps').addEventListener('change',e=>{SET.fps=e.target.checked;$('fpsTag').classList.toggle('hidden',!SET.fps);saveSet();});
 $('setInvert').addEventListener('change',e=>{SET.invert=e.target.checked;saveSet();});
-$('btnSetReset').addEventListener('click',()=>{SET=Object.assign({},SET_DEF);if(master)master.gain.value=SET.vol;applyQuality();saveSet();setUI();});
+$('btnSetReset').addEventListener('click',()=>{SET=Object.assign({},SET_DEF);autoScale=1;if(master)master.gain.value=SET.vol;applyQuality();saveSet();setUI();});
 setUI();
 try{
   const savedName=localStorage.getItem('proto_name');

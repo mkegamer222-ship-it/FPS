@@ -650,6 +650,24 @@ $('btnLeaveLobby').addEventListener('click',()=>{
   NET.cleanup();
   backToMenu();
 });
+$('btnCopyCode').addEventListener('click',()=>{
+  const code=NET.roomCode||$('lobbyCode').textContent.trim();
+  const btn=$('btnCopyCode');
+  const done=()=>{
+    btn.textContent='✓ COPIADO!';
+    setTimeout(()=>{btn.textContent='COPIAR';},1200);
+  };
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(code).then(done).catch(()=>fallback());
+  }else fallback();
+  function fallback(){
+    const ta=document.createElement('textarea');
+    ta.value=code;ta.style.position='fixed';ta.style.opacity='0';
+    document.body.appendChild(ta);ta.select();
+    try{document.execCommand('copy');done();}catch(e){}
+    document.body.removeChild(ta);
+  }
+});
 $('btnNetLostOk').addEventListener('click',()=>{
   $('netlost').classList.add('hidden');
   backToMenu();

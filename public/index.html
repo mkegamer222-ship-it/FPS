@@ -165,6 +165,7 @@ body.touch #hint,body.touch #wslots,body.touch #smokeWrap{display:none}
       <div class="tb">ABATES <b id="killN">0</b></div>
       <div class="tb hidden" id="timeTag">TEMPO <b id="timeN">90</b></div>
       <div class="tb hidden" id="pingTag">RTT <b id="pingN">–</b></div>
+      <div class="tb hidden" id="fpsTag">FPS <b id="fpsN">60</b></div>
       <div class="tb" id="modeTag">SOLO</div>
     </div>
     <div id="feed"></div>
@@ -220,8 +221,9 @@ body.touch #hint,body.touch #wslots,body.touch #smokeWrap{display:none}
       </div>
     </div>
     <div id="menuMsg"></div>
-    <div class="row" style="display:flex;gap:10px;margin-top:6px">
+    <div class="row" style="display:flex;gap:10px;margin-top:6px;flex-wrap:wrap;justify-content:center">
       <button class="tinbtn" id="btnSettings">⚙ CONFIGURAÇÕES</button>
+      <button class="tinbtn" id="btnHelp">❓ COMO JOGAR</button>
       <button class="tinbtn" id="btnFs">⛶ TELA CHEIA</button>
     </div>
     <div class="cols">
@@ -234,7 +236,10 @@ body.touch #hint,body.touch #wslots,body.touch #smokeWrap{display:none}
   <!-- LOBBY -->
   <div class="overlay hidden" id="lobby">
     <div class="tag">SALA CRIADA · COMPARTILHE O CÓDIGO</div>
-    <div id="lobbyCode">-----</div>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center">
+      <div id="lobbyCode">-----</div>
+      <button class="tinbtn" id="btnCopyCode" style="margin-top:0">COPIAR</button>
+    </div>
     <div id="lobbyList"></div>
     <div id="lobbyMsg">AGUARDANDO JOGADORES...</div>
     <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;justify-content:center">
@@ -250,13 +255,27 @@ body.touch #hint,body.touch #wslots,body.touch #smokeWrap{display:none}
       <div class="setRow"><span>SENSIBILIDADE</span><input type="range" id="setSens" min="0.2" max="3" step="0.05"/><span class="val" id="setSensV">1.00</span></div>
       <div class="setRow"><span>CAMPO DE VISÃO</span><input type="range" id="setFov" min="60" max="100" step="1"/><span class="val" id="setFovV">75</span></div>
       <div class="setRow"><span>VOLUME</span><input type="range" id="setVol" min="0" max="1" step="0.05"/><span class="val" id="setVolV">80%</span></div>
-      <div class="setRow"><span>QUALIDADE GRÁFICA</span><select id="setQual"><option value="high">ALTA</option><option value="low">BAIXA</option></select></div>
+      <div class="setRow"><span>QUALIDADE</span><select id="setQual"><option value="auto">AUTO</option><option value="high">ALTA</option><option value="med">MÉDIA</option><option value="low">BAIXA</option></select></div>
+      <div class="setRow"><span>RESOLUÇÃO</span><select id="setRes"><option value="1">100%</option><option value="0.75">75%</option><option value="0.5">50%</option></select></div>
+      <div class="setRow"><span>PARTÍCULAS</span><input type="checkbox" id="setFx"/></div>
+      <div class="setRow"><span>MOSTRAR FPS</span><input type="checkbox" id="setFps"/></div>
       <div class="setRow"><span>INVERTER EIXO Y</span><input type="checkbox" id="setInvert"/></div>
     </div>
     <div style="display:flex;gap:10px;margin-top:24px">
       <button class="bigbtn alt" id="btnSetBack">VOLTAR</button>
       <button class="tinbtn" id="btnSetReset">RESTAURAR PADRÃO</button>
     </div>
+  </div>
+
+  <!-- COMO JOGAR -->
+  <div class="overlay hidden" id="help">
+    <div class="tag">COMO JOGAR</div>
+    <div class="cols" style="margin-top:18px">
+      <div class="col" id="helpCtrl"></div>
+      <div class="col"><div class="h">PVP · EQUIPES</div>Vermelho (sul) × Azul (norte), rounds de 90 s.<br>Elimine toda a equipe inimiga para pontuar.<br><b>Headshot é letal</b> · sem fogo amigo.<br><b>Q</b>: fumaça que bloqueia visão (3 por round).<br><b>1/2</b>: VANDAL (rifle) / FANTASMA (pistola).</div>
+      <div class="col"><div class="h">SOLO · TREINO</div>Ondas de bots que ficam mais fortes a cada round.<br>Se você cair, o round recomeça.<br>Andar (<b>SHIFT</b>) deixa a mira mais precisa.</div>
+    </div>
+    <button class="bigbtn alt" id="btnHelpBack" style="margin-top:22px">VOLTAR</button>
   </div>
 
   <!-- PAUSA -->
@@ -266,6 +285,7 @@ body.touch #hint,body.touch #wslots,body.touch #smokeWrap{display:none}
     <div style="display:flex;flex-direction:column;gap:6px;margin-top:24px;align-items:center">
       <button class="bigbtn" id="resumeBtn">CONTINUAR</button>
       <button class="bigbtn alt hidden" id="btnLeavePause">SAIR DA SALA</button>
+      <button class="tinbtn" id="btnPauseSettings">⚙ CONFIGURAÇÕES</button>
       <button class="tinbtn" id="btnFsPause">⛶ TELA CHEIA</button>
     </div>
   </div>
