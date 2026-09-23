@@ -457,9 +457,9 @@ const NET={
     i.yaw=VIEW.yaw;i.pitch=VIEW.pitch;
     i.walk=INPUT.walk;i.ads=INPUT.ads;i.fire=INPUT.fire;
     i.weapon=INPUT.weapon;
-    // enviar input a 20 Hz
+    // enviar input a 30 Hz (resposta mais justa no host)
     this.sendAcc+=dt;
-    if(this.sendAcc>=0.05&&this.hostConn&&this.hostConn.open){
+    if(this.sendAcc>=0.033&&this.hostConn&&this.hostConn.open){
       this.sendAcc=0;
       try{
         this.hostConn.send({t:'i',

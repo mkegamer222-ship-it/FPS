@@ -325,23 +325,31 @@ function dmgFlash(){
   dmgEl.style.transition='opacity .6s';dmgEl.style.opacity=0;
 }
 const HUDSRC={round:1,enemies:0,kills:0,smoke:3};
+const _hud={};
+function htext(k,el,v){if(_hud[k]!==v){_hud[k]=v;el.textContent=v;}}
+function hcls(k,el,v){if(_hud[k]!==v){_hud[k]=v;el.className=v;}}
+function hstyle(k,el,prop,v){if(_hud[k]!==v){_hud[k]=v;el.style[prop]=v;}}
 function updateHUD(me){
-  hpText.textContent=Math.max(0,Math.round(me.hp));
-  hpBar.style.width=clamp(me.hp,0,100)+'%';
-  hpBar.className=me.hp<35?'lowhp':'';hpBar.id='hpBar';
+  const hp=Math.max(0,Math.round(me.hp));
+  htext('hp',hpText,hp);
+  hstyle('hpw',hpBar,'width',clamp(me.hp,0,100)+'%');
+  hcls('hpc',hpBar,(me.hp<35?'lowhp ':'')+'');
+  hpBar.id='hpBar';
   const w=WEAPONS[me.weapon];
-  ammoN.textContent=me.mags[me.weapon];
-  ammoR.textContent='/ '+me.reserves[me.weapon];
-  ammoWrap.className=me.mags[me.weapon]===0?'empty':'';ammoWrap.id='ammoWrap';
-  wnameEl.textContent=w.name+(me.reloading?' · RECARREGANDO':'');
-  roundN.textContent=HUDSRC.round;
-  enemN.textContent=HUDSRC.enemies;
-  killN.textContent=HUDSRC.kills;
-  $('timeN').textContent=Math.max(0,Math.ceil(HUDSRC.time||0));
-  smokeN.textContent='●'.repeat(me.smokeCharges)+'○'.repeat(3-me.smokeCharges);
-  $('ws0').className='wslot'+(me.weapon===0?' on':'');
-  $('ws1').className='wslot'+(me.weapon===1?' on':'');
-  vigEl.classList.toggle('low',me.hp<35&&me.hp>0);
+  htext('am',ammoN,me.mags[me.weapon]);
+  htext('ar',ammoR,'/ '+me.reserves[me.weapon]);
+  hcls('aw',ammoWrap,me.mags[me.weapon]===0?'empty':'');
+  ammoWrap.id='ammoWrap';
+  htext('wn',wnameEl,w.name+(me.reloading?' · RECARREGANDO':''));
+  htext('rn',roundN,HUDSRC.round);
+  htext('en',enemN,HUDSRC.enemies);
+  htext('kn',killN,HUDSRC.kills);
+  htext('tn',$('timeN'),Math.max(0,Math.ceil(HUDSRC.time||0)));
+  htext('sm',smokeN,'●'.repeat(me.smokeCharges)+'○'.repeat(3-me.smokeCharges));
+  hcls('w0',$('ws0'),'wslot'+(me.weapon===0?' on':''));
+  hcls('w1',$('ws1'),'wslot'+(me.weapon===1?' on':''));
+  const low=me.hp<35&&me.hp>0;
+  if(_hud.vig!==low){_hud.vig=low;vigEl.classList.toggle('low',low);}
 }
 
 // ---------------- viewmodel das armas ----------------
@@ -811,7 +819,12 @@ function roundLose(){
 }
 
 // ---------------- passo da simulação (host/solo) ----------------
+let SIM_ALPHA=1;
 function hostStep(dt){
+  // estado anterior de cada entidade: o render interpola entre prev e atual
+  // (técnica "Fix Your Timestep" de Glenn Fiedler) => movimento suave em qualquer FPS
+  for(const p of SIM.players){p.px=p.x;p.py=p.y;p.pz=p.z;p.pyaw=p.yaw;p.ppitch=p.pitch;}
+  for(const b of SIM.bots){b.px=b.x;b.py=b.y;b.pz=b.z;b.prot=b.rot;}
   if(SIM.state==='countdown'){
     SIM.cdT-=dt;
     const c=Math.ceil(SIM.cdT);
@@ -1172,11 +1185,22 @@ function getMe(){
   for(const p of SIM.players)if(p.isLocal)return p;
   return null;
 }
+function lerpAngle(a,b,t){let d=b-a;while(d>Math.PI)d-=Math.PI*2;while(d<-Math.PI)d+=Math.PI*2;return a+d*t;}
 function updateCameraAndWeapon(dt){
   const me=getMe();
   if(!me)return;
-  camera.position.set(me.x,me.y+EYE,me.z);
-  camera.rotation.y=me.yaw;camera.rotation.x=me.pitch;
+  // câmera interpolada entre os dois últimos passos de simulação
+  let cx=me.x,cy=me.y,cz=me.z,cyaw=me.yaw,cpitch=me.pitch;
+  if(me.px!==undefined&&!me.dead){
+    const d2=(me.x-me.px)*(me.x-me.px)+(me.z-me.pz)*(me.z-me.pz)+(me.y-me.py)*(me.y-me.py);
+    if(d2<4){ // guarda anti-teleporte (respawn/correção): não interpola saltos
+      const a=SIM_ALPHA;
+      cx=me.px+(me.x-me.px)*a;cy=me.py+(me.y-me.py)*a;cz=me.pz+(me.z-me.pz)*a;
+      cyaw=lerpAngle(me.pyaw,me.yaw,a);cpitch=lerpAngle(me.ppitch,me.pitch,a);
+    }
+  }
+  camera.position.set(cx,cy+EYE,cz);
+  camera.rotation.y=cyaw;camera.rotation.x=cpitch;
   if(me.dead){
     camera.rotation.z=Math.min(0.8,me.deathT*2);
     camera.position.y=Math.max(me.y+0.5,me.y+EYE-me.deathT*1.6);
@@ -1205,7 +1229,8 @@ function updateCameraAndWeapon(dt){
   gun.position.z=-0.44+localKick*0.07-(INPUT.ads?0.06:0);
   gun.rotation.x=localKick*0.05-rp*0.55;
   const gap=5+spd*7+me.fireSpread*5+(me.grounded?0:8);
-  crossEl.style.setProperty('--gap',gap+'px');
+  const gr=Math.round(gap*10)/10;
+  if(_hud.gap!==gr){_hud.gap=gr;crossEl.style.setProperty('--gap',gr+'px');}
   crossEl.classList.toggle('hide',me.dead);
   updateHUD(me);
 }
@@ -1253,10 +1278,18 @@ function trackPerf(dtRaw){
     }
   }
 }
+// simulação em passo fixo acionada pelo loop de render (60 Hz mobile / 120 Hz desktop):
+// a câmera e as entidades atualizam na mesma cadência dos quadros => movimento fluido
+const SIM_STEP=isTouch?(1/60):(1/120);
+let lastRafAt=performance.now();
 setInterval(()=>{
+  // rAF fica pausado em aba de fundo (e não existe em testes): o intervalo assume a simulação
   if(!SIM.active||G.paused)return;
-  syncLocalInput();
-  hostStep(SIM_DT);
+  if(performance.now()-lastRafAt>300){
+    syncLocalInput();
+    hostStep(SIM_DT);
+  }
+  // snapshots de rede continuam saindo a 20 Hz (o cliente interpola)
   if(window.NET)NET.afterSim();
 },50);
 function syncLocalInput(){
@@ -1278,6 +1311,7 @@ function localName(){
 let frameLast=performance.now();
 function loop(now){
   requestAnimationFrame(loop);
+  lastRafAt=now;
   // limitador de FPS: pula quadros até completar o intervalo alvo
   if(SET.fpsCap>0){
     const iv=1000/SET.fpsCap;
@@ -1297,6 +1331,15 @@ function loop(now){
     camera.lookAt(0,1.5,0);
   }else if(!G.paused){
     if(G.mode==='solo'||G.mode==='host'){
+      // passos de simulação acumulados até alcançar o tempo real (passo fixo)
+      simAcc+=dt;
+      if(simAcc>0.25)simAcc=0.25;
+      while(simAcc>=SIM_STEP){
+        syncLocalInput();
+        hostStep(SIM_STEP);
+        simAcc-=SIM_STEP;
+      }
+      SIM_ALPHA=clamp(simAcc/SIM_STEP,0,1);
       syncSIMtoVIS();
       const me=getMe();
       HUDSRC.round=SIM.round;
