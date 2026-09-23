@@ -11,7 +11,8 @@
 :root{--red:#ff4655;--bg:#0f1923;--light:#ece8e1;--teal:#46ffd7}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);font-family:'Segoe UI',Arial,sans-serif;color:var(--light);position:fixed;inset:0}
-#stage{position:fixed;inset:0;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+#stage{position:fixed;inset:0;touch-action:auto;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+/* O canvas e os comandos não rolam; os menus podem rolar no celular. */
 #stage:fullscreen,#stage:-webkit-full-screen{width:100vw;height:100vh;background:var(--bg)}
 canvas#c{width:100%;height:100%;display:block;touch-action:none}
 #hud{touch-action:none}
@@ -84,26 +85,122 @@ input,select,button{font-family:inherit}
 #dmgFlash{position:absolute;inset:0;opacity:0;box-shadow:inset 0 0 150px 60px rgba(255,30,50,.7)}
 
 #hint{position:absolute;bottom:60px;left:50%;transform:translateX(-50%);font-size:11px;letter-spacing:2px;color:rgba(236,232,225,.45);white-space:nowrap}
-#pauseBtn{position:absolute;top:12px;left:156px;width:38px;height:38px;background:rgba(15,25,35,.7);border:1px solid rgba(236,232,225,.2);color:var(--light);font-size:13px;letter-spacing:2px;pointer-events:auto;cursor:pointer}
-#fsBtn{position:absolute;top:12px;left:202px;width:38px;height:38px;background:rgba(15,25,35,.7);border:1px solid rgba(236,232,225,.2);color:var(--light);font-size:15px;pointer-events:auto;cursor:pointer}
+#pauseBtn{position:absolute;top:12px;left:156px;width:38px;height:38px;background:rgba(15,25,35,.7);border:1px solid rgba(236,232,225,.2);color:var(--light);pointer-events:auto;cursor:pointer;display:flex;align-items:center;justify-content:center}
+#fsBtn{position:absolute;top:12px;left:202px;width:38px;height:38px;background:rgba(15,25,35,.7);border:1px solid rgba(236,232,225,.2);color:var(--light);pointer-events:auto;cursor:pointer;display:flex;align-items:center;justify-content:center}
+#pauseBtn svg,#fsBtn svg{width:16px;height:16px}
+#creditTag b{color:var(--teal)}
+#buyPhase{position:absolute;top:19%;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:13px;
+  width:max-content;max-width:90vw;padding:9px 17px;border:1px solid rgba(70,255,215,.5);
+  background:linear-gradient(110deg,rgba(12,36,44,.93),rgba(15,25,35,.91));
+  box-shadow:0 10px 32px rgba(0,0,0,.35),inset 3px 0 var(--teal);text-align:left}
+#buyPhase .buyClock{font-size:39px;font-weight:900;color:var(--teal);font-variant-numeric:tabular-nums;line-height:1}
+#buyPhase strong{font-size:12px;letter-spacing:2px;display:block}
+#buyPhase small{font-size:9px;letter-spacing:1px;color:#b6ccd2;display:block;margin-top:3px}
+#shopBtn{position:absolute;left:50%;bottom:76px;transform:translateX(-50%);pointer-events:auto;
+  background:#1a4d4c;color:#e6fffa;border:1px solid var(--teal);padding:12px 19px;min-height:44px;
+  font-size:12px;font-weight:800;letter-spacing:2px;cursor:pointer;box-shadow:0 5px 24px rgba(0,0,0,.4)}
+#shopBtn:active{background:#28766d}
+body.touch #hud:has(#buyPhase:not(.hidden)) ~ #touch{display:none}
+body.touch #buyPhase{top:20%;padding:7px 12px;gap:8px}
+body.touch #buyPhase .buyClock{font-size:32px}
+body.touch #buyPhase strong{font-size:10px}
+body.touch #buyPhase small{font-size:8px}
+body.touch #shopBtn{top:calc(var(--et) + var(--rad) + 78px);bottom:auto;left:var(--el);transform:none;padding:9px 14px}
+body.touch #shopBtn .keyHint{display:none}
 
-/* ===== controles de toque ===== */
+/* ===== ícones minimalistas ===== */
+.ic{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-2.5px;margin-right:7px;flex:none}
+.bigbtn .ic{width:16px;height:16px}
+.ic.big{width:34px;height:34px;margin:0 auto 10px;display:block}
+.setRow .ic{color:var(--teal);margin-right:7px}
+.card .h .ic{color:var(--teal)}
+
+/* ===== controles de toque: alvos grandes e adaptados ao entalhe ===== */
 #touch{display:none}
-body.touch #touch{display:block}
+/* Os controles aparecem só durante a partida, nunca por trás do menu. */
+body.touch #hud:not(.hidden) ~ #touch{display:block}
+body.touch #stage:has(.overlay:not(.hidden)) #touch{display:none}
 body.touch #hint,body.touch #wslots,body.touch #smokeWrap{display:none}
-#joyBase{position:fixed;width:112px;height:112px;border-radius:50%;background:rgba(236,232,225,.08);border:1.5px solid rgba(236,232,225,.28);display:none;z-index:20}
+body.touch{
+  --fire:clamp(70px,15vmin,96px);--sm:clamp(50px,10.5vmin,62px);
+  --rad:clamp(76px,20vmin,94px);
+  --er:max(12px,env(safe-area-inset-right));--el:max(12px,env(safe-area-inset-left));
+  --eb:max(14px,env(safe-area-inset-bottom));--et:max(8px,env(safe-area-inset-top));
+}
+#joyGuide{position:fixed;left:var(--el);bottom:calc(var(--eb) + 52px);width:104px;height:104px;
+  border:1.5px dashed rgba(236,232,225,.22);border-radius:50%;background:rgba(15,25,35,.16);
+  color:rgba(236,232,225,.55);display:flex;align-items:center;justify-content:center;
+  flex-direction:column;gap:3px;z-index:19;pointer-events:none}
+#joyGuide svg{width:27px;height:27px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+#joyGuide span{font-size:9px;letter-spacing:2px}
+#joyBase{position:fixed;width:112px;height:112px;border-radius:50%;background:rgba(236,232,225,.08);border:1.5px solid rgba(236,232,225,.28);display:none;z-index:21;pointer-events:none}
 #joyKnob{position:absolute;left:50%;top:50%;width:50px;height:50px;margin:-25px 0 0 -25px;border-radius:50%;background:rgba(236,232,225,.35);border:1px solid rgba(236,232,225,.5)}
-.btn{position:fixed;border-radius:50%;background:rgba(236,232,225,.12);border:1.5px solid rgba(236,232,225,.35);color:var(--light);display:flex;align-items:center;justify-content:center;flex-direction:column;z-index:20;touch-action:none;font-size:11px;letter-spacing:1px}
-.btn.on{background:rgba(255,70,85,.4)}
-#btnFire{right:20px;bottom:28px;width:96px;height:96px;font-size:12px;letter-spacing:2px;border-color:rgba(255,70,85,.65)}
-#btnFire svg{width:32px;height:32px;margin-bottom:2px}
-#btnJump{right:134px;bottom:40px;width:62px;height:62px;font-size:22px}
-#btnReload{right:32px;bottom:140px;width:56px;height:56px;font-size:10px}
-#btnSmoke{right:122px;bottom:132px;width:56px;height:56px;font-size:15px;color:var(--teal);border-color:rgba(70,255,215,.5)}
-#btnWep{right:32px;bottom:212px;width:56px;height:56px;font-size:9px;color:#ffd28c;border-color:rgba(255,210,140,.4)}
+.btn{position:fixed;border-radius:50%;background:rgba(236,232,225,.12);border:1.5px solid rgba(236,232,225,.35);color:var(--light);display:flex;align-items:center;justify-content:center;flex-direction:column;z-index:20;touch-action:none;line-height:1;cursor:pointer}
+.btn.on{background:rgba(255,70,85,.4);border-color:var(--red)}
+.btn.active{background:rgba(70,255,215,.24);border-color:var(--teal);color:var(--teal)}
+.btn svg{width:40%;height:40%;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+.btn .actionName{font-size:7px;letter-spacing:.5px;margin-top:3px;white-space:nowrap;pointer-events:none}
+#btnFire{right:var(--er);bottom:var(--eb);width:var(--fire);height:var(--fire);border-color:rgba(255,70,85,.7);background:rgba(255,70,85,.18)}
+#btnFire svg{width:37%;height:37%}
+#btnFire .actionName{font-size:9px;letter-spacing:1.5px}
+#btnJump{right:calc(var(--er) + var(--fire) + 10px);bottom:calc(var(--eb) + 10px);width:var(--sm);height:var(--sm)}
+#btnReload{right:var(--er);bottom:calc(var(--eb) + var(--fire) + 10px);width:var(--sm);height:var(--sm)}
+#btnSmoke{right:calc(var(--er) + var(--sm) + 10px);bottom:calc(var(--eb) + var(--fire) + 10px);width:var(--sm);height:var(--sm);color:var(--teal);border-color:rgba(70,255,215,.5)}
+#btnWep{right:var(--er);bottom:calc(var(--eb) + var(--fire) + var(--sm) + 20px);width:var(--sm);height:var(--sm);color:#ffd28c;border-color:rgba(255,210,140,.4)}
+#btnAim{right:calc(var(--er) + var(--sm) + var(--sm) + 20px);bottom:calc(var(--eb) + var(--fire) + 10px);width:var(--sm);height:var(--sm)}
+#btnWalk{left:calc(var(--el) + 112px);bottom:calc(var(--eb) + 170px);width:var(--sm);height:var(--sm)}
+.badge{position:absolute;top:-5px;right:-6px;padding:3px 4px;border-radius:10px;
+  background:#0f1923;border:1px solid var(--teal);font-size:8px;letter-spacing:0;line-height:1;color:var(--teal)}
+
+/* ===== HUD mobile: radar e placar no topo, ações na direita ===== */
+body.touch #radar{width:var(--rad);height:var(--rad);top:var(--et);left:var(--el)}
+body.touch #pauseBtn{left:var(--el);top:calc(var(--et) + var(--rad) + 8px);width:44px;height:44px}
+body.touch #fsBtn{left:calc(var(--el) + 50px);top:calc(var(--et) + var(--rad) + 8px);width:44px;height:44px}
+body.touch #topbar{top:var(--et);left:calc(var(--el) + var(--rad) + 8px);right:var(--er);width:auto;max-width:none;transform:none;flex-wrap:wrap;justify-content:flex-start;gap:4px}
+body.touch .tb{padding:4px 6px;font-size:8px;letter-spacing:.7px;line-height:1.1;white-space:nowrap}
+body.touch .tb b{font-size:11px;margin-left:4px}
+body.touch #feed{top:calc(var(--et) + var(--rad) + 14px);right:calc(var(--er) + var(--sm) + 12px);max-width:min(30vw,230px);max-height:76px;overflow:hidden}
+body.touch .feedItem{font-size:10px;padding:4px 8px}
+body.touch #hpWrap{left:var(--el);bottom:var(--eb);width:min(190px,34vw);min-width:90px;height:30px}
+body.touch #hpText{font-size:15px}
+body.touch #ammoWrap{left:calc(var(--el) + min(190px,34vw) + 10px);right:auto;bottom:var(--eb);padding:6px 10px;text-align:right}
+body.touch #ammoN{font-size:26px}
+body.touch #ammoR{font-size:12px}
+body.touch #wname{font-size:9px;letter-spacing:2px}
+body.touch #announce{font-size:clamp(22px,5vw,36px)}
+body.touch #announceSub{font-size:10px;letter-spacing:2px;top:calc(22% + 44px)}
+body.touch .bigbtn{min-height:48px;padding:14px 26px;font-size:14px}
+body.touch .tinbtn{min-height:44px;padding:11px 15px;font-size:12px}
+body.touch .txt{min-height:44px;font-size:16px}
+body.touch .overlay{justify-content:flex-start;padding:max(18px,env(safe-area-inset-top)) max(18px,env(safe-area-inset-right)) max(18px,env(safe-area-inset-bottom)) max(18px,env(safe-area-inset-left))}
+body.touch #pause,body.touch #netlost{justify-content:center}
+body.touch .tag{letter-spacing:2px;line-height:1.4}
+body.touch .setRow{gap:8px;font-size:11px;letter-spacing:1px}
+body.touch .setRow>span:first-child{flex:1;display:flex;align-items:center;text-align:left;min-width:0}
+body.touch .setRow input[type=range]{width:clamp(75px,23vw,150px)}
+body.touch .setRow .val{min-width:34px}
+body.touch .setRow select{min-height:44px;max-width:48%;font-size:14px}
+body.touch .setRow input[type=checkbox]{width:24px;height:24px;flex:none}
+body.touch .settingsActions{flex-wrap:wrap;justify-content:center}
+body.touch .card input{width:110px}
+body.touch #btnJoin{padding-inline:12px;font-size:12px}
+@media (orientation:portrait){
+  body.touch #ammoWrap{left:auto;right:var(--er);bottom:calc(var(--eb) + var(--fire) + var(--sm) + var(--sm) + 34px)}
+  body.touch #feed{right:var(--er);max-width:min(42vw,230px)}
+}
+@media (max-width:600px){
+  .nameRow{flex-direction:column;gap:6px}
+  .logo{letter-spacing:2px}
+  .setRow{font-size:11px;gap:8px}
+  .setRow input[type=range]{width:min(110px,28vw)}
+  .setRow .val{min-width:34px}
+}
+@media (max-height:600px){.overlay{justify-content:flex-start}}
+@media (max-width:360px){body.touch #joyGuide{width:90px;height:90px}}
+
 
 /* ===== overlays base ===== */
-.overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(160deg,rgba(15,25,35,.94),rgba(15,25,35,.82));z-index:50;text-align:center;padding:20px;overflow-y:auto}
+.overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(160deg,rgba(15,25,35,.94),rgba(15,25,35,.82));z-index:50;text-align:center;padding:20px;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y}
 .logo{position:relative;font-size:clamp(40px,9vw,80px);font-weight:900;font-style:italic;letter-spacing:4px;line-height:1;color:var(--light);z-index:1}
 .logo em{color:var(--red);font-style:italic}
 .logo::after{content:"";position:absolute;left:-14px;right:-14px;bottom:8px;height:14px;background:var(--red);z-index:-1;transform:skewX(-20deg)}
@@ -151,11 +248,94 @@ body.touch #hint,body.touch #wslots,body.touch #smokeWrap{display:none}
 
 #pauseTitle,#netTitle{font-size:clamp(30px,6vw,42px);font-weight:900;font-style:italic;letter-spacing:6px}
 #netlost p{margin-top:14px;color:#93a1ad;font-size:13px;letter-spacing:1px;max-width:80vw}
+
+/* ===== arsenal: rolagem própria e compras em PC/touch ===== */
+#shop{z-index:70;background:rgba(5,13,21,.83);backdrop-filter:blur(9px);padding:14px;justify-content:center}
+.shopPanel{width:min(930px,100%);max-height:100%;overflow-y:auto;overscroll-behavior:contain;
+  touch-action:pan-y;background:#111f2b;border:1px solid rgba(70,255,215,.36);
+  box-shadow:0 22px 90px rgba(0,0,0,.65);padding:16px;text-align:left}
+.shopHead{display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:-16px;z-index:3;
+  margin:-16px -16px 0;padding:13px 16px;background:#111f2b;border-bottom:1px solid rgba(236,232,225,.13)}
+.shopHead strong{font-size:18px;letter-spacing:3px;font-style:italic;color:var(--light)}
+.shopHead small{display:block;color:#91a6b3;font-size:10px;letter-spacing:1px;margin-top:3px}
+.shopHead .shopSummary{display:flex;gap:12px;align-items:center;color:var(--teal);font-size:11px;letter-spacing:1px}
+.shopSummary b{font-size:20px;color:#fff;font-variant-numeric:tabular-nums}
+#shopClose{border:1px solid rgba(236,232,225,.4);background:#233446;color:var(--light);width:44px;height:44px;
+  flex:none;display:flex;align-items:center;justify-content:center;cursor:pointer}
+#shopClose .ic{margin:0;width:20px;height:20px}
+#shopList{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;padding-top:14px}
+.gunCard{background:linear-gradient(150deg,#1b3040,#152532);border:1px solid #385364;padding:12px;min-height:157px}
+.gunCard.owned{border-color:var(--teal)}
+.gunCard .gunTop{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.gunCard .gunName{font-size:14px;font-weight:800;letter-spacing:1px;color:#f7f9f9}
+.gunCard .gunPrice{font-size:12px;color:var(--teal);font-weight:700;white-space:nowrap}
+.gunCard .gunArt{display:block;width:100%;height:37px;margin:8px 0;color:#8ebbc3;filter:drop-shadow(0 0 9px rgba(70,255,215,.16))}
+.gunCard small{font-size:10px;color:#a6b9c1;line-height:1.35}
+.gunCard button{display:block;width:100%;min-height:36px;margin-top:9px;background:#b73544;color:white;border:0;
+  font-size:10px;letter-spacing:2px;font-weight:800;cursor:pointer}
+.gunCard button:not(:disabled):active{background:var(--red)}
+.gunCard button:disabled{cursor:default;background:#314455;color:#a2adb8}
+.gunCard.owned button{background:#1e5d57;color:var(--teal)}
+#shopMsg{min-height:18px;margin-top:10px;color:var(--teal);font-size:11px;letter-spacing:1px}
+.shopFoot{font-size:10px;line-height:1.6;color:#8295a2;margin-top:8px;letter-spacing:.5px}
+body.touch #shop{padding:max(8px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left));justify-content:center}
+body.touch .shopPanel{padding:12px}
+body.touch .shopHead{top:-12px;margin:-12px -12px 0;padding:10px 12px}
+body.touch .shopHead strong{font-size:14px;letter-spacing:1.5px}
+body.touch .shopHead .shopSummary{gap:6px;font-size:9px}
+body.touch .shopHead .shopSummary b{font-size:16px}
+body.touch #shopList{grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:7px}
+body.touch .gunCard{min-height:147px;padding:9px}
+body.touch .gunCard .gunName{font-size:12px}
+body.touch .gunCard .gunArt{height:30px;margin:6px 0}
+body.touch .gunCard small{font-size:9px}
+body.touch .gunCard button{min-height:44px;margin-top:7px}
+@media (max-width:365px){body.touch .shopHead{flex-wrap:wrap}body.touch .shopHead strong{font-size:13px}}
 </style>
 </head>
 <body>
 <div id="stage">
   <canvas id="c"></canvas>
+
+  <!-- sprite de ícones minimalistas (SVG inline, sem dependências externas) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+    <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4"/></symbol>
+    <symbol id="i-jump" viewBox="0 0 24 24"><path d="M6 13.5l6-6 6 6"/><path d="M5 20.5h14"/></symbol>
+    <symbol id="i-reload" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 3v4.5h-4.5"/></symbol>
+    <symbol id="i-smoke" viewBox="0 0 24 24"><path d="M7.3 18h9a3.8 3.8 0 0 0 .9-7.5 5.4 5.4 0 0 0-10.6 1A3.5 3.5 0 0 0 7.3 18z"/></symbol>
+    <symbol id="i-swap" viewBox="0 0 24 24"><path d="M5 8h12M14 4.5L17.5 8 14 11.5"/><path d="M19 16H7M10 12.5L6.5 16l3.5 3.5"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.4 9.2a2.7 2.7 0 0 1 5.2.9c0 1.8-2.5 2.1-2.5 3.5"/><path d="M12 16.6v.3"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7.5 4.5l12 7.5-12 7.5z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8.5 5v14M15.5 5v14" stroke-width="3"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11"/><path d="M5 15V4h11"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-enter" viewBox="0 0 24 24"><path d="M14 7l5 5-5 5M19 12H9"/><path d="M5 4v16"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M4.8 20c1.2-4 4.1-5.6 7.2-5.6s6 1.6 7.2 5.6"/></symbol>
+    <symbol id="i-exit" viewBox="0 0 24 24"><path d="M10 4H4v16h6"/><path d="M14 8l4 4-4 4M18 12H9"/></symbol>
+    <symbol id="i-bullet" viewBox="0 0 24 24"><path d="M9.5 3.5h5V11l-2.5 2.6L9.5 11z"/><path d="M9.5 16.5h5M9.5 20h5"/></symbol>
+    <symbol id="i-health" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-wifioff" viewBox="0 0 24 24"><path d="M2 8.5C7.5 3.8 16.5 3.8 22 8.5M5.5 12.5c3.6-3 9.4-3 13 0M9 16.3a4.6 4.6 0 0 1 6 0"/><circle cx="12" cy="19.4" r="1" fill="currentColor" stroke="none"/><path d="M3 3l18 18"/></symbol>
+    <symbol id="i-move" viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/></symbol>
+    <symbol id="i-walk" viewBox="0 0 24 24"><path d="M4 14l4-2 3 3-1 4-4 2-3-3zM14 5l3-2 4 4-1 4-3 2-3-3z"/><path d="M6 16l2 2M16 7l2 2"/></symbol>
+    <symbol id="i-sens" viewBox="0 0 24 24"><path d="M5 4v16M12 4v16M19 4v16M2 8h6M9 15h6M16 10h6"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12c2.5-4.4 5.8-6.6 10-6.6s7.5 2.2 10 6.6c-2.5 4.4-5.8 6.6-10 6.6S4.5 16.4 2 12z"/><circle cx="12" cy="12" r="2.6"/></symbol>
+    <symbol id="i-volume" viewBox="0 0 24 24"><path d="M3 9h4l5-4v14l-5-4H3zM16 9c1.7 1.7 1.7 4.3 0 6M19 6c3.3 3.3 3.3 8.7 0 12"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3L2 9l10 6 10-6zM3 13l9 5 9-5M3 17l9 5 9-5"/></symbol>
+    <symbol id="i-screen" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="15" rx="1"/><path d="M8 22h8M12 18v4M5 6h3v3H5zM11 6h3v3h-3z"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 2l1.9 6.1L20 10l-6.1 1.9L12 18l-1.9-6.1L4 10l6.1-1.9zM19 17l.7 2.3L22 20l-2.3.7L19 23l-.7-2.3L16 20l2.3-.7z"/></symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M3 16a9 9 0 1 1 18 0M12 16l4-6M5 19h14"/><circle cx="12" cy="16" r="1"/></symbol>
+    <symbol id="i-timer" viewBox="0 0 24 24"><circle cx="12" cy="13" r="9"/><path d="M12 13l4-3M9 1h6M12 4v2"/></symbol>
+    <symbol id="i-flip" viewBox="0 0 24 24"><path d="M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4M12 4v16"/></symbol>
+    <symbol id="i-duel" viewBox="0 0 24 24"><circle cx="5" cy="7" r="2"/><circle cx="19" cy="7" r="2"/><path d="M2 18v-4a3 3 0 0 1 6 0v4M16 18v-4a3 3 0 0 1 6 0v4M10 11l4 4m0-4l-4 4"/></symbol>
+    <symbol id="i-cart" viewBox="0 0 24 24"><path d="M2 4h3l2.2 11h12l2-8H6"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19"/></symbol>
+    <symbol id="i-rifle" viewBox="0 0 120 32"><path d="M3 13h21l7-5h23l5 5h24l5 3h28v4H81l-5 7H60l2-7H45l-6 7H25l5-7H3z" fill="currentColor" stroke="none"/><path d="M42 8V5h24v3M94 12V8h7v4"/></symbol>
+    <symbol id="i-smg" viewBox="0 0 120 32"><path d="M6 12h17l5-5h35l5 5h13l4 4h24v4H78l-2 9H61l1-9H42l-5 7H22l2-7H6z" fill="currentColor" stroke="none"/><path d="M35 7V4h19v3M91 14V8"/></symbol>
+    <symbol id="i-dmr" viewBox="0 0 120 32"><path d="M3 14h28l8-4h27l3 4h40l5 3v3H81l-8 8H59l1-8H43l-9 7H20l6-7H3z" fill="currentColor" stroke="none"/><path d="M37 10V6h27v4M14 13V9"/></symbol>
+    <symbol id="i-pistol" viewBox="0 0 120 32"><path d="M31 10h51l8 4h14v5H71l-6 10H47l4-10H32l-5-4z" fill="currentColor" stroke="none"/><path d="M42 10V7h29v3M90 14h13"/></symbol>
+  </defs></svg>
 
   <div id="hud" class="hidden">
     <canvas id="radar" width="132" height="132"></canvas>
@@ -166,117 +346,136 @@ body.touch #hint,body.touch #wslots,body.touch #smokeWrap{display:none}
       <div class="tb hidden" id="timeTag">TEMPO <b id="timeN">90</b></div>
       <div class="tb hidden" id="pingTag">RTT <b id="pingN">–</b></div>
       <div class="tb hidden" id="fpsTag">FPS <b id="fpsN">60</b></div>
+      <div class="tb hidden" id="creditTag">CRÉDITOS <b id="creditN">900</b></div>
       <div class="tb" id="modeTag">SOLO</div>
     </div>
     <div id="feed"></div>
     <div id="announce"></div>
     <div id="announceSub"></div>
+    <div id="buyPhase" class="hidden"><span class="buyClock" id="buySecs">15</span><span><strong>FASE DE COMPRA</strong><small>IMÓVEL ATÉ O TIMER ZERAR · B ABRE A LOJA</small></span></div>
     <div id="crosshair"><span class="c-dot"></span><span class="c-line c-t"></span><span class="c-line c-b"></span><span class="c-line c-l"></span><span class="c-line c-r"></span></div>
     <div id="hitmarker"></div>
-    <div id="hpWrap"><div id="hpBar"></div><span id="hpText">100</span></div>
-    <div id="smokeWrap">Q · FUMAÇA<b id="smokeN">●●●</b></div>
-    <div id="wslots"><div class="wslot on" id="ws0"><b>1</b>VANDAL</div><div class="wslot" id="ws1"><b>2</b>FANTASMA</div></div>
-    <div id="ammoWrap"><span id="ammoN">25</span><span id="ammoR">/ 75</span><div id="wname">VANDAL</div></div>
+    <div id="hpWrap"><div id="hpBar"></div><svg class="ic" style="position:relative;z-index:1;margin-left:8px;margin-right:0;color:#08131d" aria-hidden="true"><use href="#i-health"/></svg><span id="hpText" style="margin-left:6px">100</span></div>
+    <div id="smokeWrap"><svg class="ic"><use href="#i-smoke"/></svg>Q · FUMAÇA<b id="smokeN">●●●</b></div>
+    <div id="wslots"><div class="wslot on" id="ws0"><b>1</b><span id="ws0Name">VANDAL</span></div><div class="wslot" id="ws1"><b>2</b><span id="ws1Name">FANTASMA</span></div></div>
+    <div id="ammoWrap"><svg class="ic" style="color:var(--teal)"><use href="#i-bullet"/></svg><span id="ammoN">25</span><span id="ammoR">/ 75</span><div id="wname">VANDAL</div></div>
     <div id="vignette"></div>
     <div id="dmgFlash"></div>
-    <div id="hint">WASD MOVER · SHIFT ANDAR · ESPAÇO PULAR · R RECARREGAR · Q FUMAÇA · 1/2 ARMAS · BOTÃO DIR. MIRAR</div>
-    <button id="pauseBtn">II</button>
-    <button id="fsBtn">⛶</button>
+    <div id="hint">WASD MOVER · SHIFT ANDAR · ESPAÇO PULAR · R RECARREGAR · Q FUMAÇA · 1/2 ARMAS · B LOJA (PVP) · BOTÃO DIR. MIRAR</div>
+    <button id="shopBtn" class="hidden" aria-label="Abrir loja de armas"><svg class="ic"><use href="#i-cart"/></svg> LOJA <span class="keyHint">· B</span></button>
+    <button id="pauseBtn" title="Pausar" aria-label="Pausar"><svg class="ic" style="margin:0" aria-hidden="true"><use href="#i-pause"/></svg></button>
+    <button id="fsBtn" title="Tela cheia" aria-label="Tela cheia"><svg class="ic" style="margin:0" aria-hidden="true"><use href="#i-expand"/></svg></button>
   </div>
 
   <div id="touch">
+    <div id="joyGuide" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-move"/></svg><span>MOVER</span></div>
     <div id="joyBase"><div id="joyKnob"></div></div>
-    <button class="btn" id="btnFire">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/></svg>
-      ATIRAR
+    <button class="btn" id="btnFire" aria-label="Atirar">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-target"/></svg><span class="actionName">ATIRAR</span>
     </button>
-    <button class="btn" id="btnJump">▲</button>
-    <button class="btn" id="btnReload">RECAR.</button>
-    <button class="btn" id="btnSmoke">Q</button>
-    <button class="btn" id="btnWep">TROCAR</button>
+    <button class="btn" id="btnJump" aria-label="Pular"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-jump"/></svg><span class="actionName">PULAR</span></button>
+    <button class="btn" id="btnReload" aria-label="Recarregar"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-reload"/></svg><span class="actionName">RECAR.</span></button>
+    <button class="btn" id="btnSmoke" aria-label="Usar fumaça"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-smoke"/></svg><span class="actionName">FUMAÇA</span><span class="badge" id="smokeTouch">●●●</span></button>
+    <button class="btn" id="btnWep" aria-label="Trocar arma"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-swap"/></svg><span class="actionName">ARMA</span></button>
+    <button class="btn" id="btnAim" aria-label="Ativar ou desativar mira de precisão" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-eye"/></svg><span class="actionName">MIRA</span></button>
+    <button class="btn" id="btnWalk" aria-label="Ativar ou desativar caminhada" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-walk"/></svg><span class="actionName">ANDAR</span></button>
+  </div>
+
+  <!-- LOJA PVP: compras apenas durante a fase congelada de 15 s -->
+  <div class="overlay hidden" id="shop" role="dialog" aria-modal="true" aria-label="Loja de armas">
+    <div class="shopPanel">
+      <div class="shopHead">
+        <div><strong><svg class="ic" aria-hidden="true"><use href="#i-cart"/></svg>ARSENAL</strong><small>ESCOLHA SUA ARMA ANTES DA RODADA</small></div>
+        <div class="shopSummary"><span>¤ <b id="shopCredits">900</b></span><span>⏱ <b id="shopSecs">15</b>s</span></div>
+        <button id="shopClose" aria-label="Fechar loja"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button>
+      </div>
+      <div id="shopList"></div>
+      <div id="shopMsg" role="status" aria-live="polite"></div>
+      <div class="shopFoot">+200 ¤ por eliminação · +3000 ¤ vitória · +1900 ¤ derrota · sobreviventes mantêm as armas. Aperte B ou feche para voltar a mirar.</div>
+    </div>
   </div>
 
   <!-- MENU PRINCIPAL -->
   <div class="overlay" id="menu">
     <div class="logo">PROTO<em>COLO</em></div>
-    <div class="tag">FPS tático · cooperativo · multiplayer P2P</div>
+    <div class="tag">FPS tático · treino solo · PvP P2P</div>
     <div class="nameRow">
       <label>SEU NOME</label>
       <input class="txt" id="nameInput" maxlength="12" placeholder="AGENTE"/>
     </div>
     <div class="modes">
       <div class="card">
-        <div class="h">// TREINO SOLO</div>
+        <div class="h"><svg class="ic" aria-hidden="true"><use href="#i-target"/></svg>// TREINO SOLO</div>
         <p>Enfrente ondas de bots sozinho. A cada round eles ficam mais rápidos e precisos.</p>
-        <div class="row"><button class="bigbtn" id="btnSolo">JOGAR SOLO</button></div>
+        <div class="row"><button class="bigbtn" id="btnSolo"><svg class="ic"><use href="#i-user"/></svg>JOGAR SOLO</button></div>
       </div>
       <div class="card">
-        <div class="h">// MULTIPLAYER P2P</div>
-        <p>Crie uma sala (seu navegador vira o servidor) ou entre com o código de um amigo. Até 5 agentes contra os bots.</p>
+        <div class="h"><svg class="ic" aria-hidden="true"><use href="#i-duel"/></svg>// MULTIPLAYER P2P</div>
+        <p>Crie uma sala (seu navegador hospeda a partida) ou entre pelo código. PvP em equipes, até 5 jogadores.</p>
         <div class="row">
-          <button class="bigbtn teal" id="btnCreate">CRIAR SALA</button>
+          <button class="bigbtn teal" id="btnCreate"><svg class="ic"><use href="#i-plus"/></svg>CRIAR SALA</button>
           <input class="txt" id="roomCodeInput" maxlength="5" placeholder="CÓDIGO" autocomplete="off"/>
-          <button class="bigbtn alt" id="btnJoin">ENTRAR</button>
+          <button class="bigbtn alt" id="btnJoin"><svg class="ic"><use href="#i-enter"/></svg>ENTRAR</button>
         </div>
       </div>
     </div>
     <div id="menuMsg"></div>
     <div class="row" style="display:flex;gap:10px;margin-top:6px;flex-wrap:wrap;justify-content:center">
-      <button class="tinbtn" id="btnSettings">⚙ CONFIGURAÇÕES</button>
-      <button class="tinbtn" id="btnHelp">❓ COMO JOGAR</button>
-      <button class="tinbtn" id="btnFs">⛶ TELA CHEIA</button>
+      <button class="tinbtn" id="btnSettings"><svg class="ic"><use href="#i-gear"/></svg>CONFIGURAÇÕES</button>
+      <button class="tinbtn" id="btnHelp"><svg class="ic"><use href="#i-help"/></svg>COMO JOGAR</button>
+      <button class="tinbtn" id="btnFs"><svg class="ic"><use href="#i-expand"/></svg>TELA CHEIA</button>
     </div>
     <div class="cols">
       <div class="col" id="colCtrl"><div class="h">CONTROLES</div></div>
-      <div class="col"><div class="h">COMO FUNCIONA O P2P</div>A sala roda <b>100% no navegador do anfitrião</b> — sem servidor de jogo.<br>A conexão usa WebRTC (data channels) com sinalização via PeerJS Cloud.<br>Se a conexão direta falhar (NAT restritivo), use outra rede.</div>
+      <div class="col"><div class="h"><svg class="ic" aria-hidden="true"><use href="#i-duel"/></svg>COMO FUNCIONA O P2P</div>A sala roda <b>100% no navegador do anfitrião</b> — sem servidor de jogo.<br>A conexão usa WebRTC (data channels) com sinalização via PeerJS Cloud.<br>Se a conexão direta falhar (NAT restritivo), use outra rede.</div>
     </div>
     <div class="foot">RODA NO NAVEGADOR · PC E CELULAR · SEM INSTALAÇÃO</div>
   </div>
 
   <!-- LOBBY -->
   <div class="overlay hidden" id="lobby">
-    <div class="tag">SALA CRIADA · COMPARTILHE O CÓDIGO</div>
+    <div class="tag"><svg class="ic" aria-hidden="true"><use href="#i-duel"/></svg>SALA CRIADA · COMPARTILHE O CÓDIGO</div>
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center">
       <div id="lobbyCode">-----</div>
-      <button class="tinbtn" id="btnCopyCode" style="margin-top:0">COPIAR</button>
+      <button class="tinbtn" id="btnCopyCode" style="margin-top:0"><svg class="ic"><use href="#i-copy"/></svg><span id="copyLbl">COPIAR</span></button>
     </div>
     <div id="lobbyList"></div>
     <div id="lobbyMsg">AGUARDANDO JOGADORES...</div>
     <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;justify-content:center">
-      <button class="bigbtn hidden" id="btnStart">INICIAR PARTIDA</button>
-      <button class="bigbtn alt" id="btnLeaveLobby">SAIR</button>
+      <button class="bigbtn hidden" id="btnStart"><svg class="ic"><use href="#i-play"/></svg>INICIAR PARTIDA</button>
+      <button class="bigbtn alt" id="btnLeaveLobby"><svg class="ic"><use href="#i-exit"/></svg>SAIR</button>
     </div>
   </div>
 
   <!-- CONFIGURAÇÕES -->
   <div class="overlay hidden" id="settings">
-    <div class="tag">CONFIGURAÇÕES</div>
+    <div class="tag"><svg class="ic" aria-hidden="true"><use href="#i-gear"/></svg>CONFIGURAÇÕES</div>
     <div style="margin-top:20px">
-      <div class="setRow"><span>SENSIBILIDADE</span><input type="range" id="setSens" min="0.2" max="3" step="0.05"/><span class="val" id="setSensV">1.00</span></div>
-      <div class="setRow"><span>CAMPO DE VISÃO</span><input type="range" id="setFov" min="60" max="100" step="1"/><span class="val" id="setFovV">75</span></div>
-      <div class="setRow"><span>VOLUME</span><input type="range" id="setVol" min="0" max="1" step="0.05"/><span class="val" id="setVolV">80%</span></div>
-      <div class="setRow"><span>QUALIDADE</span><select id="setQual"><option value="auto">AUTO</option><option value="high">ALTA</option><option value="med">MÉDIA</option><option value="low">BAIXA</option></select></div>
-      <div class="setRow"><span>RESOLUÇÃO</span><select id="setRes"><option value="1">100%</option><option value="0.75">75%</option><option value="0.5">50%</option></select></div>
-      <div class="setRow"><span>PARTÍCULAS</span><input type="checkbox" id="setFx"/></div>
-      <div class="setRow"><span>MOSTRAR FPS</span><input type="checkbox" id="setFps"/></div>
-      <div class="setRow"><span>LIMITAR FPS</span><select id="setFpsCap"><option value="0">SEM LIMITE</option><option value="30">30 FPS</option><option value="60">60 FPS</option><option value="90">90 FPS</option><option value="120">120 FPS</option></select></div>
-      <div class="setRow"><span>INVERTER EIXO Y</span><input type="checkbox" id="setInvert"/></div>
+      <div class="setRow"><span><svg class="ic" aria-hidden="true"><use href="#i-sens"/></svg>SENSIBILIDADE</span><input type="range" id="setSens" min="0.2" max="3" step="0.05" aria-label="Sensibilidade"/><span class="val" id="setSensV">1.00</span></div>
+      <div class="setRow"><span><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg>CAMPO DE VISÃO</span><input type="range" id="setFov" min="60" max="100" step="1" aria-label="Campo de visão"/><span class="val" id="setFovV">75</span></div>
+      <div class="setRow"><span><svg class="ic" aria-hidden="true"><use href="#i-volume"/></svg>VOLUME</span><input type="range" id="setVol" min="0" max="1" step="0.05" aria-label="Volume"/><span class="val" id="setVolV">80%</span></div>
+      <div class="setRow"><span><svg class="ic" aria-hidden="true"><use href="#i-layers"/></svg>QUALIDADE</span><select id="setQual" aria-label="Qualidade gráfica"><option value="auto">AUTO</option><option value="high">ALTA</option><option value="med">MÉDIA</option><option value="low">BAIXA</option></select></div>
+      <div class="setRow"><span><svg class="ic" aria-hidden="true"><use href="#i-screen"/></svg>RESOLUÇÃO</span><select id="setRes" aria-label="Resolução"><option value="1">100%</option><option value="0.75">75%</option><option value="0.5">50%</option></select></div>
+      <div class="setRow"><span><svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg>PARTÍCULAS</span><input type="checkbox" id="setFx" aria-label="Ativar partículas"/></div>
+      <div class="setRow"><span><svg class="ic" aria-hidden="true"><use href="#i-gauge"/></svg>MOSTRAR FPS</span><input type="checkbox" id="setFps" aria-label="Mostrar FPS"/></div>
+      <div class="setRow"><span><svg class="ic" aria-hidden="true"><use href="#i-timer"/></svg>LIMITAR FPS</span><select id="setFpsCap" aria-label="Limite de FPS"><option value="0">SEM LIMITE</option><option value="30">30 FPS</option><option value="60">60 FPS</option><option value="90">90 FPS</option><option value="120">120 FPS</option></select></div>
+      <div class="setRow"><span><svg class="ic" aria-hidden="true"><use href="#i-flip"/></svg>INVERTER EIXO Y</span><input type="checkbox" id="setInvert" aria-label="Inverter eixo Y"/></div>
     </div>
-    <div style="display:flex;gap:10px;margin-top:24px">
-      <button class="bigbtn alt" id="btnSetBack">VOLTAR</button>
-      <button class="tinbtn" id="btnSetReset">RESTAURAR PADRÃO</button>
+    <div class="settingsActions" style="display:flex;gap:10px;margin-top:24px">
+      <button class="bigbtn alt" id="btnSetBack"><svg class="ic"><use href="#i-exit"/></svg>VOLTAR</button>
+      <button class="tinbtn" id="btnSetReset"><svg class="ic"><use href="#i-reload"/></svg>RESTAURAR PADRÃO</button>
     </div>
   </div>
 
   <!-- COMO JOGAR -->
   <div class="overlay hidden" id="help">
-    <div class="tag">COMO JOGAR</div>
+    <div class="tag"><svg class="ic" aria-hidden="true"><use href="#i-help"/></svg>COMO JOGAR</div>
     <div class="cols" style="margin-top:18px">
       <div class="col" id="helpCtrl"></div>
-      <div class="col"><div class="h">PVP · EQUIPES</div>Vermelho (sul) × Azul (norte), rounds de 90 s.<br>Elimine toda a equipe inimiga para pontuar.<br><b>Headshot é letal</b> · sem fogo amigo.<br><b>Q</b>: fumaça que bloqueia visão (3 por round).<br><b>1/2</b>: VANDAL (rifle) / FANTASMA (pistola).</div>
-      <div class="col"><div class="h">SOLO · TREINO</div>Ondas de bots que ficam mais fortes a cada round.<br>Se você cair, o round recomeça.<br>Andar (<b>SHIFT</b>) deixa a mira mais precisa.</div>
+      <div class="col"><div class="h"><svg class="ic" aria-hidden="true"><use href="#i-duel"/></svg>PVP · EQUIPES</div>Vermelho (sul) × Azul (norte), rounds de 90 s.<br><b>Início:</b> 15 s imóvel no spawn para comprar armas (B no PC, LOJA no celular).<br>+200 ¤ por abate; +3000 ¤ por vitória; +1900 ¤ por derrota. Quem sobrevive mantém o equipamento.<br>Elimine toda a equipe inimiga para pontuar.<br><b>Headshot é letal</b> · sem fogo amigo.<br><b>Q</b>: fumaça (3 por round).<br><b>1/2</b>: alternar entre primária e pistola.</div>
+      <div class="col"><div class="h"><svg class="ic" aria-hidden="true"><use href="#i-target"/></svg>SOLO · TREINO</div>Ondas de bots que ficam mais fortes a cada round.<br>Se você cair, o round recomeça.<br>Andar (<b>SHIFT</b>) deixa a mira mais precisa.</div>
     </div>
-    <button class="bigbtn alt" id="btnHelpBack" style="margin-top:22px">VOLTAR</button>
+    <button class="bigbtn alt" id="btnHelpBack" style="margin-top:22px"><svg class="ic"><use href="#i-exit"/></svg>VOLTAR</button>
   </div>
 
   <!-- PAUSA -->
@@ -284,22 +483,24 @@ body.touch #hint,body.touch #wslots,body.touch #smokeWrap{display:none}
     <div id="pauseTitle">PAUSADO</div>
     <div id="mpPauseNote" class="hidden" style="margin-top:12px;color:#8b98a5;font-size:12px;letter-spacing:2px">MULTIPLAYER NÃO PAUSA — O JOGO CONTINUA RODANDO</div>
     <div style="display:flex;flex-direction:column;gap:6px;margin-top:24px;align-items:center">
-      <button class="bigbtn" id="resumeBtn">CONTINUAR</button>
-      <button class="bigbtn alt hidden" id="btnLeavePause">SAIR DA SALA</button>
-      <button class="tinbtn" id="btnPauseSettings">⚙ CONFIGURAÇÕES</button>
-      <button class="tinbtn" id="btnFsPause">⛶ TELA CHEIA</button>
+      <button class="bigbtn" id="resumeBtn"><svg class="ic"><use href="#i-play"/></svg>CONTINUAR</button>
+      <button class="bigbtn alt hidden" id="btnLeavePause"><svg class="ic"><use href="#i-exit"/></svg>SAIR DA SALA</button>
+      <button class="tinbtn" id="btnPauseSettings"><svg class="ic"><use href="#i-gear"/></svg>CONFIGURAÇÕES</button>
+      <button class="tinbtn" id="btnFsPause"><svg class="ic"><use href="#i-expand"/></svg>TELA CHEIA</button>
     </div>
   </div>
 
   <!-- CONEXÃO PERDIDA -->
   <div class="overlay hidden" id="netlost">
+    <svg class="ic big" style="color:var(--red)"><use href="#i-wifioff"/></svg>
     <div id="netTitle">CONEXÃO PERDIDA</div>
     <p id="netlostMsg">A sala foi fechada ou a conexão com o anfitrião caiu.</p>
-    <button class="bigbtn" id="btnNetLostOk" style="margin-top:26px">VOLTAR AO MENU</button>
+    <button class="bigbtn" id="btnNetLostOk" style="margin-top:26px"><svg class="ic"><use href="#i-exit"/></svg>VOLTAR AO MENU</button>
   </div>
 </div>
 
 <script src="three.min.js"></script>
+<script src="GLTFLoader.js"></script>
 <script src="peerjs.min.js"></script>
 <script src="game.js"></script>
 <script src="net.js"></script>

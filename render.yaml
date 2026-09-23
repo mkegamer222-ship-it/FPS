@@ -1,7 +1,7 @@
 services:
   - type: web
     name: protocolo-fps
-    env: node
+    runtime: node
     plan: free
     buildCommand: echo "sem build"
     startCommand: node server.js

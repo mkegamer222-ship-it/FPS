@@ -11,6 +11,7 @@ const MIME={
   '.js':'text/javascript; charset=utf-8',
   '.css':'text/css; charset=utf-8',
   '.json':'application/json',
+  '.glb':'model/gltf-binary',
   '.png':'image/png',
   '.jpg':'image/jpeg',
   '.svg':'image/svg+xml',
@@ -24,7 +25,9 @@ http.createServer((req,res)=>{
   catch(e){res.writeHead(400);return res.end();}
   if(urlPath==='/')urlPath='/index.html';
   const filePath=path.normalize(path.join(ROOT,urlPath));
-  if(!filePath.startsWith(ROOT)){res.writeHead(403);return res.end('403');}
+  if(filePath!==ROOT&&!filePath.startsWith(ROOT+path.sep)){
+    res.writeHead(403);return res.end('403');
+  }
   fs.readFile(filePath,(err,data)=>{
     if(err){res.writeHead(404,{'Content-Type':'text/plain'});return res.end('404');}
     res.writeHead(200,{

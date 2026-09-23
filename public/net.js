@@ -18,6 +18,12 @@ const NET={
   // ---------- gancho chamado pelo game.js ----------
   pushEvent(ev){if(this.isHost&&this.started)this.evQueue.push(ev);},
   afterSim(){if(this.isHost&&this.started)this.broadcast();},
+  requestBuy(id){
+    if(!this.started||this.st!=='b'||!this.hostConn||!this.hostConn.open){
+      shopNotice('Loja indisponível.',false);return;
+    }
+    try{this.hostConn.send({t:'buy',w:id});}catch(e){shopNotice('Falha ao enviar compra.',false);}
+  },
 
   // ---------- utilidades de UI ----------
   msg(t,ok){
@@ -42,11 +48,11 @@ const NET={
     this.lobby.forEach((p,i)=>{
       const d=document.createElement('div');
       d.className='lobbyP';
-      let tags='';
-      if(i===0)tags+='<span class="host">ANFITRIÃO</span>';
-      if(p.id===this.myId)tags+='<span class="you">VOCÊ</span>';
-      d.innerHTML='<span>'+p.name+'</span>'+tags;
-      box.appendChild(d);
+      const label=document.createElement('span');label.textContent=String(p.name);d.appendChild(label);
+      const tags=document.createElement('span');
+      if(i===0){const host=document.createElement('span');host.className='host';host.textContent='ANFITRIÃO';tags.appendChild(host);}
+      if(p.id===this.myId){const you=document.createElement('span');you.className='you';you.textContent='VOCÊ';tags.appendChild(you);}
+      d.appendChild(tags);box.appendChild(d);
     });
   },
 
@@ -117,7 +123,8 @@ const NET={
   // ---------- host: chegada de cliente ----------
   onIncoming(conn){
     conn.on('open',()=>{
-      const name=(conn.metadata&&conn.metadata.name)||'AGENTE';
+      const name=(String((conn.metadata&&conn.metadata.name)||'AGENTE').trim().toUpperCase()
+        .replace(/[^A-Z0-9À-ÖØ-öø-ÿ _-]/g,'').slice(0,18))||'AGENTE';
       if(this.started||this.lobby.length>=5){
         conn.send({t:'full'});
         setTimeout(()=>conn.close(),300);
@@ -141,6 +148,12 @@ const NET={
       if(d.t==='i'&&this.started){
         const c=this.conns.find(c=>c.conn===conn);
         if(c){c.lastT=performance.now();this.applyInput(c.pid,d);}
+      }
+      if(d.t==='buy'&&this.started){
+        const c=this.conns.find(c=>c.conn===conn);
+        const p=c&&SIM.players.find(q=>q.id===c.pid);
+        const result=tryBuy(p,d.w); // o host valida fase, ID da arma e saldo
+        try{conn.send({t:'buyAck',ok:result.ok,msg:result.msg});}catch(e){}
       }
     });
     const onClose=()=>{
@@ -173,10 +186,12 @@ const NET={
     const p=SIM.players.find(q=>q.id===pid);
     if(!p)return;
     const i=p.input;
-    i.mx=d.mx||0;i.mz=d.mz||0;
-    i.yaw=d.y||0;i.pitch=d.p||0;
+    i.mx=Number.isFinite(d.mx)?clamp(d.mx,-1,1):0;
+    i.mz=Number.isFinite(d.mz)?clamp(d.mz,-1,1):0;
+    i.yaw=Number.isFinite(d.y)?d.y:0;
+    i.pitch=Number.isFinite(d.p)?clamp(d.p,-1.45,1.45):0;
     i.walk=!!d.wk;i.fire=!!d.f;i.ads=!!d.a;
-    i.weapon=d.w?1:0;
+    i.weapon=d.w===1?1:0;
     if(d.j)i.jump=true;
     if(d.r)i.reload=true;
     if(d.q)i.q=true;
@@ -203,6 +218,7 @@ const NET={
     G.mode='host';G.paused=false;
     $('timeTag').classList.remove('hidden');
     $('pingTag').classList.remove('hidden');
+    $('creditTag').classList.remove('hidden');
     $('lobby').classList.add('hidden');
     hudEl.classList.remove('hidden');
     lockPointer();
@@ -225,9 +241,10 @@ const NET={
     const pr=n=>+n.toFixed(2);
     const rows=SIM.players.map(p=>[p.id,pr(p.x),pr(p.y),pr(p.z),pr(p.yaw),pr(p.pitch),
       Math.round(p.hp),p.mags[p.weapon],p.reloading?1:0,p.dead?1:0,p.weapon,
-      p.input.ads?1:0,p.kills,p.smokeCharges,p.reserves[p.weapon],p.team]);
+      p.input.ads?1:0,p.kills,p.smokeCharges,p.reserves[p.weapon],p.team,
+      p.credits,p.loadout[0],p.loadout[1],p.mags[0],p.mags[1],p.reserves[0],p.reserves[1]]);
     const brows=SIM.bots.map(b=>[b.id,pr(b.x),pr(b.z),pr(b.y),pr(b.rot),b.alive?1:0]);
-    const msg={t:'s',st:SIM.state==='playing'?'p':(SIM.state==='countdown'?'c':'e'),
+    const msg={t:'s',st:SIM.state==='playing'?'p':(SIM.state==='buy'?'b':(SIM.state==='countdown'?'c':'e')),
       cd:+SIM.cdT.toFixed(1),rnd:SIM.round,el:SIM.enemiesLeft,
       al:[aliveCount(0),aliveCount(1)],sc:SIM.score,rt:Math.ceil(SIM.roundT),
       p:rows,b:brows,ev:this.evQueue};
@@ -317,6 +334,10 @@ const NET={
       case 'start':
         this.startClientGame(d.teams||[]);
         break;
+      case 'buyAck':
+        shopNotice(d.msg||'Compra processada.',!!d.ok);
+        if(d.ok)sfx.buy();else sfx.deny();
+        break;
       case 'pong':
         this.rtt=performance.now()-(d.ts||0);
         $('pingN').textContent=Math.round(this.rtt)+'ms';
@@ -336,13 +357,17 @@ const NET={
     this.PE=makeEnt(this.myId,this.myName);
     this.PE.isLocal=true;
     this.PE.team=this.myTeam;
-    this.st='c';this.lastRnd=0;this.snaps.length=0;this.snapNow=true;this.visSnap=true;
+    this.PE.loadout=[-1,1];this.PE.weapon=1;this.PE.credits=START_CREDITS;
+    this.PE.mags=[0,WEAPONS[1].mag];this.PE.reserves=[0,WEAPONS[1].reserve];
+    INPUT.weapon=1;
+    this.st='b';this.cdT=BUY_TIME;this.lastRnd=0;this.snaps.length=0;this.snapNow=true;this.visSnap=true;
     this.lastSnapT=performance.now();
     VIEW.yaw=this.myTeam===1?Math.PI:0;
     VIEW.pitch=0;
     G.mode='client';G.paused=false;
     $('timeTag').classList.remove('hidden');
     $('pingTag').classList.remove('hidden');
+    $('creditTag').classList.remove('hidden');
     $('lobby').classList.add('hidden');
     hudEl.classList.remove('hidden');
     lockPointer();
@@ -353,15 +378,24 @@ const NET={
     this.snaps.push({t:performance.now(),d});
     if(this.snaps.length>12)this.snaps.shift();
     this.lastSnap=d;
-    if(d.rnd!==this.lastRnd){this.lastRnd=d.rnd;this.snapNow=true;this.visSnap=true;this.snaps.length=1;}
-    if(d.st==='c'){
+    const newRound=d.rnd!==this.lastRnd;
+    if(newRound){
+      this.lastRnd=d.rnd;this.snapNow=true;this.visSnap=true;this.snaps.length=1;this.lastCd=-1;
+      VIEW.yaw=this.myTeam===1?Math.PI:0;VIEW.pitch=0;INPUT.fire=false;
+    }
+    this.st=d.st;this.cdT=Math.max(0,d.cd||0);
+    if(d.st==='c'||d.st==='b'){
       const c=Math.ceil(d.cd);
-      if(c!==this.lastCd&&c>0){this.lastCd=c;sfx.tick();announce(String(c),'',0.8);}
+      if(c!==this.lastCd&&c>0){
+        this.lastCd=c;
+        if(d.st==='c'||c<=3){sfx.tick();announce(String(c),d.st==='b'?'PREPARE-SE':'',0.75);}
+      }
     }else this.lastCd=-1;
-    this.st=d.st;
     for(const ev of d.ev)this.handleEvent(ev);
     const me=d.p.find(r=>r[0]===this.myId);
     if(me&&this.PE)this.correctSelf(me);
+    if(d.st==='b'&&newRound&&isTouch)openShop();
+    if(d.st!=='b'&&SHOP.open)closeShop(false);
     this.lastSnapT=performance.now();
     HUDSRC.round=d.rnd;
     HUDSRC.enemies=d.al?(this.myTeam===0?d.al[1]:d.al[0]):d.el;
@@ -372,20 +406,26 @@ const NET={
     const PE=this.PE;
     const ax=row[1],ay=row[2],az=row[3];
     const errH=Math.hypot(ax-PE.x,az-PE.z);
-    if(errH>2.5||this.snapNow){PE.x=ax;PE.z=az;PE.vy=0;}
+    const frozen=this.st==='b';
+    if(errH>2.5||this.snapNow||frozen){PE.x=ax;PE.z=az;PE.vy=0;}
     else{PE.x+=(ax-PE.x)*0.55;PE.z+=(az-PE.z)*0.55;}
-    if(Math.abs(ay-PE.y)>1.2)PE.y=ay;
+    if(frozen||Math.abs(ay-PE.y)>1.2)PE.y=ay;
     else PE.y+=(ay-PE.y)*0.55;
-    PE.hp=row[6];
-    if(row[10]!==PE.weapon){PE.weapon=row[10];}
-    PE.mags[PE.weapon]=row[7];
-    PE.reserves[PE.weapon]=row[14];
-    PE.reloading=row[8]===1;
+    if(frozen)PE.speed=0;
+    const primary=Number.isInteger(row[17])?row[17]:-1;
+    const sidearm=Number.isInteger(row[18])?row[18]:1;
+    const loadChanged=PE.loadout[0]!==primary||PE.loadout[1]!==sidearm;
+    PE.loadout=[primary,sidearm];PE.credits=row[16]||0;
+    if(loadChanged||this.snapNow)INPUT.weapon=row[10];
+    if(this.snapNow){PE.fireSpread=0;PE.fireCd=0;PE.stepAcc=0;}
+    PE.weapon=row[10];
+    PE.mags=[row[19]||0,row[20]||0];
+    PE.reserves=[row[21]||0,row[22]||0];
+    PE.hp=row[6];PE.reloading=row[8]===1;
     const wasDead=PE.dead;
     PE.dead=row[9]===1;
     if(PE.dead&&!wasDead)PE.deathT=0;
-    PE.kills=row[12];
-    PE.smokeCharges=row[13];
+    PE.kills=row[12];PE.smokeCharges=row[13];
     HUDSRC.kills=row[12];
     this.snapNow=false;
   },
@@ -398,7 +438,8 @@ const NET={
           sfxIfNear(ev.ox,ev.oz,sfx.botShoot);
         }else if(ev.id!==this.myId){
           tracer(new THREE.Vector3(ev.ox,ev.oy,ev.oz),new THREE.Vector3(ev.hx,ev.hy,ev.hz),0xffd28c);
-          sfxIfNear(ev.ox,ev.oz,ev.w===1?sfx.shootP:sfx.shoot);
+          sfxIfNear(ev.ox,ev.oz,WEAPONS[ev.w]&&WEAPONS[ev.w].slot===1?sfx.shootP:sfx.shoot);
+          const v=VIS.players.get(ev.id);if(v)v.shot=1;
         }
         break;
       case 'hit':
@@ -452,10 +493,12 @@ const NET={
       }
     }
     if(PE.dead)PE.deathT+=dt;
+    const frozen=this.st==='b';
+    if(frozen)this.cdT=Math.max(0,(this.cdT||0)-dt);
     const i=PE.input;
-    i.mx=INPUT.mx;i.mz=INPUT.mz;
+    i.mx=frozen?0:INPUT.mx;i.mz=frozen?0:INPUT.mz;
     i.yaw=VIEW.yaw;i.pitch=VIEW.pitch;
-    i.walk=INPUT.walk;i.ads=INPUT.ads;i.fire=INPUT.fire;
+    i.walk=INPUT.walk;i.ads=INPUT.ads;i.fire=frozen?false:INPUT.fire;
     i.weapon=INPUT.weapon;
     // enviar input a 30 Hz (resposta mais justa no host)
     this.sendAcc+=dt;
@@ -463,23 +506,29 @@ const NET={
       this.sendAcc=0;
       try{
         this.hostConn.send({t:'i',
-          mx:+clamp(INPUT.mx,-1,1).toFixed(2),mz:+clamp(INPUT.mz,-1,1).toFixed(2),
+          mx:frozen?0:+clamp(INPUT.mx,-1,1).toFixed(2),mz:frozen?0:+clamp(INPUT.mz,-1,1).toFixed(2),
           y:+VIEW.yaw.toFixed(3),p:+VIEW.pitch.toFixed(3),
-          wk:INPUT.walk?1:0,f:INPUT.fire?1:0,a:INPUT.ads?1:0,w:INPUT.weapon,
-          j:INPUT.jump?1:0,r:INPUT.reload?1:0,q:INPUT.q?1:0});
+          wk:INPUT.walk?1:0,f:frozen?0:(INPUT.fire?1:0),a:INPUT.ads?1:0,w:INPUT.weapon,
+          j:frozen?0:(INPUT.jump?1:0),r:frozen?0:(INPUT.reload?1:0),q:frozen?0:(INPUT.q?1:0)});
       }catch(e){}
     }
-    // consumir bordas para predição local
-    i.jump=i.jump||INPUT.jump;INPUT.jump=false;
-    if(INPUT.reload){i.reload=true;INPUT.reload=false;}
-    if(INPUT.q){i.q=true;INPUT.q=false;}
+    // Durante a compra, ignorar movimento, tiro e ações também na predição local.
+    if(frozen){
+      i.jump=false;i.reload=false;i.q=false;
+      INPUT.jump=false;INPUT.reload=false;INPUT.q=false;
+      PE.speed=0;PE.vy=0;
+    }else{
+      i.jump=i.jump||INPUT.jump;INPUT.jump=false;
+      if(INPUT.reload){i.reload=true;INPUT.reload=false;}
+      if(INPUT.q){i.q=true;INPUT.q=false;}
+    }
     PE.yaw=VIEW.yaw;PE.pitch=VIEW.pitch;
-    if(!PE.dead)integrate(PE,dt);
-    this.stepLocalWeapons(PE,dt);
+    if(!PE.dead&&!frozen)integrate(PE,dt);
+    if(!frozen)this.stepLocalWeapons(PE,dt);
     this.renderNet();
   },
   startReloadLocal(PE){
-    const w=WEAPONS[PE.weapon];
+    const w=weaponDef(PE);
     if(PE.reloading||PE.dead)return;
     if(PE.mags[PE.weapon]>=w.mag||PE.reserves[PE.weapon]<=0)return;
     PE.reloading=true;PE.reloadT=0;
@@ -489,13 +538,13 @@ const NET={
     PE.fireCd-=dt;
     PE.fireSpread=Math.max(0,PE.fireSpread-dt*4);
     PE.smokeCd=Math.max(0,PE.smokeCd-dt);
-    if(PE.input.weapon!==PE.weapon&&!PE.dead){
+    if(PE.input.weapon!==PE.weapon&&!PE.dead&&PE.loadout[PE.input.weapon]>=0){
       PE.weapon=PE.input.weapon;PE.reloading=false;PE.reloadT=0;
     }
     if(PE.input.reload){PE.input.reload=false;this.startReloadLocal(PE);}
     if(PE.reloading){
       PE.reloadT+=dt;
-      const w=WEAPONS[PE.weapon];
+      const w=weaponDef(PE);
       if(PE.reloadT>=w.reload){
         const need=w.mag-PE.mags[PE.weapon];
         const take=Math.min(need,PE.reserves[PE.weapon]);
@@ -518,11 +567,11 @@ const NET={
     }
   },
   clientFire(PE){
-    const w=WEAPONS[PE.weapon];
+    const w=weaponDef(PE);
     if(PE.mags[PE.weapon]<=0){this.startReloadLocal(PE);return;}
     PE.mags[PE.weapon]--;
     PE.fireCd=w.rate;
-    localShotFX(PE.weapon);
+    localShotFX(weaponId(PE));
     // rastro apenas visual (o dano é decidido pelo host)
     const cp=Math.cos(PE.pitch);
     let dx=-Math.sin(PE.yaw)*cp,dy=Math.sin(PE.pitch),dz=-Math.cos(PE.yaw)*cp;
@@ -580,11 +629,12 @@ const NET={
       const ra=a.d.p.find(r=>r[0]===id)||row;
       const x=lerp(ra[1],row[1]),y=lerp(ra[2],row[2]),z=lerp(ra[3],row[3]),yw=lerpA(ra[4],row[4]);
       const v=ensureVisPlayer(id,row[15]||0);
-      setVisTarget(v,x,y,z,yw,row[9]===0,this.visSnap);
+      const slot=row[10]===0?0:1;
+      setVisTarget(v,x,y,z,yw,row[9]===0,this.visSnap,row[slot===0?17:18]);
       this.interpPlayers.push({x,z,team:row[15]||0});
     }
     for(const[id,v]of VIS.players){
-      if(!seen.has(id)){scene.remove(v.group);VIS.players.delete(id);}
+      if(!seen.has(id)){destroyVisual(v);VIS.players.delete(id);}
     }
     const bseen=new Set();
     this.interpBots=[];
@@ -593,11 +643,11 @@ const NET={
       const ra=a.d.b.find(r=>'b'+r[0]===id)||row;
       const x=lerp(ra[1],row[1]),z=lerp(ra[2],row[2]),y=lerp(ra[3],row[3]),rot=lerpA(ra[4],row[4]);
       const v=ensureVisBot(id);
-      setVisTarget(v,x,y,z,rot,row[5]===1,this.visSnap);
+      setVisTarget(v,x,y,z,rot+Math.PI,row[5]===1,this.visSnap);
       this.interpBots.push({x,z,alive:row[5]===1});
     }
     for(const[id,v]of VIS.bots){
-      if(!bseen.has(id)){scene.remove(v.group);VIS.bots.delete(id);}
+      if(!bseen.has(id)){destroyVisual(v);VIS.bots.delete(id);}
     }
     this.visSnap=false;
   },
@@ -618,6 +668,9 @@ const NET={
     backToMenu();
   },
   cleanup(){
+    closeShop(false);
+    $('buyPhase').classList.add('hidden');$('shopBtn').classList.add('hidden');
+    $('creditTag').classList.add('hidden');
     try{for(const c of this.conns)c.conn.close();}catch(e){}
     try{if(this.hostConn)this.hostConn.close();}catch(e){}
     try{if(this.peer)this.peer.destroy();}catch(e){}
@@ -652,10 +705,10 @@ $('btnLeaveLobby').addEventListener('click',()=>{
 });
 $('btnCopyCode').addEventListener('click',()=>{
   const code=NET.roomCode||$('lobbyCode').textContent.trim();
-  const btn=$('btnCopyCode');
+  const lbl=$('copyLbl');
   const done=()=>{
-    btn.textContent='✓ COPIADO!';
-    setTimeout(()=>{btn.textContent='COPIAR';},1200);
+    lbl.textContent='✓ COPIADO!';
+    setTimeout(()=>{lbl.textContent='COPIAR';},1200);
   };
   if(navigator.clipboard&&navigator.clipboard.writeText){
     navigator.clipboard.writeText(code).then(done).catch(()=>fallback());
